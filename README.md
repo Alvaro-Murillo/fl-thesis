@@ -7,13 +7,18 @@ effects via a two-stage nested partitioning method.
 
 ## Setup
 
-conda env create -f environment.yml
-conda activate fl-thesis
+Python 3.12.10 (virtual environment)
 
-Note: environment.yml is not yet committed. The full environment (PyTorch,
-Flower, FedArtML, etc.) is being set up on the main development machine
-(desktop with RTX 3070 Ti), not on this laptop, so that the exported
-environment reflects a GPU-verified working setup.
+pip install -r requirements.txt
+
+Key dependencies: torch 2.14.0+cu126 / torchvision 0.29.0+cu126 (CUDA 12.6),
+flwr 1.36.0 (Flower), FedArtML 0.1.34, scikit-learn, pandas, numpy,
+matplotlib, seaborn.
+
+requirements.txt was frozen from the GPU-verified environment on the main
+development machine (desktop with RTX 3070 Ti). Run `python tests/env_report.py`
+to print the active environment's platform, package versions, and CUDA/GPU
+details.
 
 ## Structure
 
@@ -31,5 +36,7 @@ environment reflects a GPU-verified working setup.
 - fl-thesis conda environment created then removed (was being set up on
   laptop by mistake - full environment to be built on main desktop machine
   with RTX 3070 Ti instead)
-- Environment setup (PyTorch + CUDA, Flower, FedArtML) pending
+- Virtual environment (Python 3.12.10) set up on main desktop machine (RTX
+  3070 Ti); dependencies frozen to requirements.txt (PyTorch 2.14.0+cu126,
+  Flower 1.36.0, FedArtML 0.1.34, etc.)
 - No code written yet
