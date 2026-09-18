@@ -1,8 +1,12 @@
-"""Artifact store, atomic writes and provenance (work-plan task A4.3).
+"""Artifact store, atomic writes and provenance (work-plan tasks A4.3/A4.4).
 
 Partitions are content-addressed: `partition_id` hashes only the fields that
 change the split, so FedAvg and FedProx at the same grid cell provably read the
 same bytes, and changing `federated.rounds` does not regenerate anything.
+
+Runs append to `runs.jsonl` twice - once at start with status `running`, once
+at the end with the outcome - so a killed run is visible as `running` next to
+a partial but parseable `history.csv`. Readers take the last row per `run_id`.
 
 Every write lands via a temp file plus `os.replace`, because a run killed
 mid-write on Windows otherwise leaves half a JSON file behind.
@@ -10,14 +14,19 @@ mid-write on Windows otherwise leaves half a JSON file behind.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+
+from experiments.config import config_hash, dump_config
+from experiments.seeding import seeds_for
 
 TIMESTAMP_FMT = "%Y%m%dT%H%M%S"  # no colons; Windows rejects them in filenames
 
@@ -99,3 +108,137 @@ def save_partition(out_dir: str | Path, pid: str,
 def load_partition(out_dir: str | Path, pid: str) -> list[np.ndarray]:
     with np.load(partition_dir(out_dir) / f"{pid}.npz") as data:
         return [data[key] for key in sorted(data.files)]
+
+
+HISTORY_COLUMNS = ("round", "global_test_acc", "global_test_loss",
+                   "mean_client_train_loss", "round_wall_s")
+
+
+def torch_provenance() -> dict:
+    """Which torch/GPU produced a number. Absent torch is recorded, not raised."""
+    try:
+        import torch
+    except ImportError:
+        return {"torch_version": None, "cuda_version": None, "gpu_name": None}
+    return {
+        "torch_version": torch.__version__,
+        "cuda_version": torch.version.cuda,
+        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+    }
+
+
+def runs_path(out_dir: str | Path) -> Path:
+    return Path(out_dir) / "runs.jsonl"
+
+
+def completed_runs(out_dir: str | Path) -> set[str]:
+    """config_hashes whose latest row says `completed` - the resume key."""
+    latest: dict[str, str] = {}
+    for row in read_jsonl(runs_path(out_dir)):
+        latest[row["config_hash"]] = row["status"]
+    return {h for h, status in latest.items() if status == "completed"}
+
+
+def skip_if_exists(config, out_dir: str | Path | None = None) -> bool:
+    """True when this exact config has already run to completion."""
+    return config_hash(config) in completed_runs(out_dir or config.runtime.out_dir)
+
+
+class RunRecorder:
+    """Writes one run's rows, history and resolved config.
+
+    Use as a context manager: an exception is recorded as `failed` (`oom` for a
+    CUDA OOM) and re-raised, so a crashed run never looks completed.
+    """
+
+    def __init__(self, config, partition_id: str, out_dir: str | Path | None = None,
+                 rta_target: float | None = None):
+        self.config = config
+        self.partition_id = partition_id
+        self.rta_target = rta_target
+        self.run_id = config_hash(config)
+        self.out_dir = Path(out_dir or config.runtime.out_dir)
+        self.dir = self.out_dir / "runs" / self.run_id
+        self.accuracies: list[float] = []
+        self._history = None
+        self._writer = None
+        self._started = 0.0
+        self._started_at = ""
+
+    def start(self) -> RunRecorder:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        dump_config(self.config, self.dir / "config.yaml")
+        self._started, self._started_at = time.perf_counter(), utc_stamp()
+        self._history = (self.dir / "history.csv").open("w", newline="", encoding="utf-8")
+        self._writer = csv.DictWriter(self._history, fieldnames=HISTORY_COLUMNS)
+        self._writer.writeheader()
+        self._history.flush()
+        self._append_row("running")
+        return self
+
+    def log_round(self, round: int, global_test_acc: float, global_test_loss: float,
+                  mean_client_train_loss: float, round_wall_s: float) -> None:
+        self.accuracies.append(global_test_acc)
+        self._writer.writerow({
+            "round": round, "global_test_acc": global_test_acc,
+            "global_test_loss": global_test_loss,
+            "mean_client_train_loss": mean_client_train_loss,
+            "round_wall_s": round_wall_s})
+        self._history.flush()  # a kill -9 must still leave every finished round
+
+    def finish(self, status: str = "completed") -> None:
+        if self._history is not None:
+            self._history.close()
+            self._history = None
+        self._append_row(status)
+
+    def _rta(self) -> int | None:
+        """First round reaching rta_target, 1-indexed; None if never reached."""
+        if self.rta_target is None:
+            return None
+        hits = [i for i, acc in enumerate(self.accuracies, 1) if acc >= self.rta_target]
+        return hits[0] if hits else None
+
+    def _append_row(self, status: str) -> None:
+        done = status != "running"
+        federated, runtime = self.config.federated, self.config.runtime
+        seeds = seeds_for(self.config)
+        append_jsonl(runs_path(self.out_dir), {
+            "run_id": self.run_id,
+            "partition_id": self.partition_id,
+            "config_hash": self.run_id,
+            "algorithm": federated.algorithm,
+            "mu": federated.mu,
+            "model": self.config.model.arch,
+            "rounds": federated.rounds,
+            "local_epochs": federated.local_epochs,
+            "batch_size": federated.batch_size,
+            "lr": federated.lr,
+            "trial": runtime.trial,
+            "init_seed": seeds.init,
+            "train_seed": seeds.train,
+            "deterministic": runtime.deterministic,
+            "final_acc": self.accuracies[-1] if self.accuracies else None,
+            "best_acc": max(self.accuracies) if self.accuracies else None,
+            "rta": self._rta(),
+            "wall_clock_s": round(time.perf_counter() - self._started, 3) if done else None,
+            "status": status,
+            **git_provenance(),
+            **torch_provenance(),
+            "started_at": self._started_at,
+            "finished_at": utc_stamp() if done else None,
+        })
+
+    def __enter__(self) -> RunRecorder:
+        return self.start()
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        if exc_type is None:
+            self.finish("completed")
+        else:
+            self.finish("oom" if _is_oom(exc) else "failed")
+        return False
+
+
+def _is_oom(exc: BaseException) -> bool:
+    return type(exc).__name__ == "OutOfMemoryError" or "out of memory" in str(exc).lower()
