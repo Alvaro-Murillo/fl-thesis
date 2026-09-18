@@ -1,0 +1,27 @@
+# RQ2 - STUB. Blocked on the B6 calibration table.
+#
+# The headline claim is a paired comparison matched on REALIZED label-HD, so
+# the grid must be specified in target_label_hd, not alpha. Resolving a target
+# to the alpha each arm needs is exactly what calibration/{id}.json provides,
+# and the same alpha does not yield the same label-HD in both arms - which is
+# the confound this design exists to avoid.
+#
+# `status: blocked` is load-bearing: the sweep driver must refuse to run a grid
+# that carries it, rather than silently sweeping an incomplete specification.
+
+status: blocked
+blocked_on: B6 calibration table (target_label_hd -> alpha, per dataset x K x mode)
+
+base: config/base.yaml
+
+# Intended shape once calibration exists - Arm A vs Arm B at matched targets:
+#
+# constant:
+#   partition.K: 30
+#   partition.calibration_id: <id of the B6 table>
+#
+# sweep:
+#   partition.mode: [natural_per_class, pure_label]
+#   partition.target_label_hd: [...]   # from the calibrated feasible range
+#   federated.algorithm: [fedavg, fedprox]
+#   runtime.trial: [0, 1, 2]

@@ -1,0 +1,29 @@
+# RQ3 - STUB. Blocked on the B6 calibration table and on B3/B5.
+#
+# The additivity test compares delta_combined against
+# delta_label-only + delta_quantity-only, which is a lookup across matched grid
+# cells: the three skew arms must sit at the same target HDs, and a no-skew
+# baseline is needed for every delta to be measured against.
+#
+# Needs quantity_only (B3) and combined (B5) implemented, plus calibration for
+# both the label and quantity dials.
+
+status: blocked
+blocked_on: B6 calibration table; B3 quantity_only; B5 combined two-stage nested
+
+base: config/base.yaml
+
+# Intended shape - one cell per (skew arm x matched target HD x trial):
+#
+# constant:
+#   partition.K: 30
+#   partition.calibration_id: <id of the B6 table>
+#
+# sweep:
+#   partition.mode: [pure_label, quantity_only, combined]
+#   partition.target_label_hd: [...]      # null for the quantity_only arm
+#   partition.target_quantity_hd: [...]   # null for the pure_label arm
+#   runtime.trial: [0, 1, 2]
+#
+# The baseline cell (no label skew, no quantity skew) is not expressible as a
+# sweep row - it needs its own entry once the modes exist.

@@ -1,0 +1,25 @@
+# RQ1 - the quantity-skew byproduct of standard Dirichlet label partitioning.
+#
+# Partition-only: no training, no GPU, fully regenerable from partitions.jsonl.
+# Every cell is one partition; the sweep below expands to 63 of them (7 alphas
+# x 3 client counts x 3 trials), a few seconds of CPU each.
+#
+# Grid contract, as consumed by the sweep driver:
+#   base     path to a complete config; every field not swept comes from it
+#   constant dotted overrides applied to every cell
+#   sweep    dotted key -> list of values; cells are the cartesian product
+
+base: config/base.yaml
+
+constant:
+  partition.min_size_policy: 10
+
+sweep:
+  partition.mode: [natural_per_class]
+  partition.alpha: [0.1, 0.3, 0.5, 1.0, 5.0, 10.0, 100.0]
+  partition.K: [10, 30, 100]
+  runtime.trial: [0, 1, 2]
+
+# Add `natural_per_client` to partition.mode once B2 implements it - the
+# per-class vs per-client contrast is the second half of RQ1, and FedArtML has
+# no per-client variant to borrow.
