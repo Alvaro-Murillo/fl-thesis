@@ -1,0 +1,186 @@
+"""Experiment configuration schema (work-plan task A4.1).
+
+Frozen dataclasses are the schema; YAML is the input format. A config
+canonicalises to a key-sorted dict, so `config_hash` identifies a grid cell
+reproducibly across machines and runs. No Hydra: grids stay diffable in git.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict, dataclass, fields
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+ALGORITHMS = frozenset({"fedavg", "fedprox"})
+OPTIMIZERS = frozenset({"adam", "sgd"})
+DEVICES = frozenset({"cuda", "cpu"})
+
+
+class PartitionMode(str, Enum):
+    NATURAL_PER_CLASS = "natural_per_class"    # B2, FedArtML per-class Dirichlet draw
+    NATURAL_PER_CLIENT = "natural_per_client"  # B2, per-client draw, from scratch
+    PURE_LABEL = "pure_label"                  # B4, quantity-corrected
+    QUANTITY_ONLY = "quantity_only"            # B3, MinSize-Dirichlet
+    COMBINED = "combined"                      # B5, two-stage nested
+
+
+@dataclass(frozen=True)
+class DatasetConfig:
+    name: str
+    num_classes: int
+    root: str = "data"
+    val_split: float = 0.0
+
+    def __post_init__(self):
+        if not 0.0 <= self.val_split < 1.0:
+            raise ValueError(f"val_split must be in [0, 1), got {self.val_split}")
+
+
+@dataclass(frozen=True)
+class PartitionConfig:
+    mode: PartitionMode
+    K: int
+    alpha: float | None = None          # label-Dirichlet concentration
+    beta: float | None = None           # quantity-Dirichlet concentration
+    target_label_hd: float | None = None
+    target_quantity_hd: float | None = None
+    min_size_policy: int = 0            # min samples per client; redraw below it, 0 = off
+    calibration_id: str | None = None   # calibration/{id}.json that resolved target HD -> alpha
+
+    def __post_init__(self):
+        if self.K < 2:
+            raise ValueError(f"K must be >= 2, got {self.K}")
+        needs_alpha = self.mode is not PartitionMode.QUANTITY_ONLY
+        needs_beta = self.mode in (PartitionMode.QUANTITY_ONLY, PartitionMode.COMBINED)
+        for name, value, needed in (("alpha", self.alpha, needs_alpha),
+                                    ("beta", self.beta, needs_beta)):
+            if needed and (value is None or value <= 0):
+                raise ValueError(f"mode {self.mode.value} requires {name} > 0, got {value}")
+            if not needed and value is not None:
+                raise ValueError(f"mode {self.mode.value} does not use {name}")
+        for name, value in (("target_label_hd", self.target_label_hd),
+                            ("target_quantity_hd", self.target_quantity_hd)):
+            if value is not None and not 0.0 <= value < 1.0:
+                raise ValueError(f"{name} must be in [0, 1), got {value}")
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    arch: str
+    in_channels: int
+    num_classes: int
+
+
+@dataclass(frozen=True)
+class FederatedConfig:
+    algorithm: str
+    rounds: int
+    local_epochs: int
+    batch_size: int
+    lr: float
+    mu: float = 0.0                # FedProx proximal term
+    optimizer: str = "adam"
+    client_fraction: float = 1.0
+
+    def __post_init__(self):
+        if self.algorithm not in ALGORITHMS:
+            raise ValueError(f"algorithm must be one of {sorted(ALGORITHMS)}")
+        if self.optimizer not in OPTIMIZERS:
+            raise ValueError(f"optimizer must be one of {sorted(OPTIMIZERS)}")
+        if self.algorithm == "fedavg" and self.mu != 0.0:
+            raise ValueError("mu is a FedProx parameter; fedavg requires mu = 0")
+        if self.algorithm == "fedprox" and self.mu <= 0.0:
+            raise ValueError("fedprox requires mu > 0")
+        if min(self.rounds, self.local_epochs, self.batch_size) < 1:
+            raise ValueError("rounds, local_epochs and batch_size must be >= 1")
+        if self.lr <= 0:
+            raise ValueError(f"lr must be > 0, got {self.lr}")
+        if not 0.0 < self.client_fraction <= 1.0:
+            raise ValueError(f"client_fraction must be in (0, 1], got {self.client_fraction}")
+
+
+@dataclass(frozen=True)
+class RuntimeConfig:
+    trial: int = 0
+    deterministic: bool = True
+    device: str = "cuda"
+    out_dir: str = "results"
+    partition_seed: int | None = None  # None = derive from trial (A4.2)
+    init_seed: int | None = None
+    train_seed: int | None = None
+
+    def __post_init__(self):
+        if self.trial < 0:
+            raise ValueError(f"trial must be >= 0, got {self.trial}")
+        if self.device not in DEVICES:
+            raise ValueError(f"device must be one of {sorted(DEVICES)}")
+
+
+@dataclass(frozen=True)
+class ExperimentConfig:
+    dataset: DatasetConfig
+    partition: PartitionConfig
+    model: ModelConfig
+    federated: FederatedConfig
+    runtime: RuntimeConfig = RuntimeConfig()
+
+    def __post_init__(self):
+        if self.model.num_classes != self.dataset.num_classes:
+            raise ValueError(
+                f"model.num_classes ({self.model.num_classes}) != "
+                f"dataset.num_classes ({self.dataset.num_classes})")
+
+
+_SECTIONS = {f.name: f.type for f in fields(ExperimentConfig)}
+_SECTION_TYPES = {
+    "dataset": DatasetConfig,
+    "partition": PartitionConfig,
+    "model": ModelConfig,
+    "federated": FederatedConfig,
+    "runtime": RuntimeConfig,
+}
+
+
+def _build(section: str, values: dict[str, Any]):
+    cls = _SECTION_TYPES[section]
+    known = {f.name for f in fields(cls)}
+    unknown = set(values) - known
+    if unknown:
+        raise ValueError(f"unknown key(s) in '{section}': {sorted(unknown)}")
+    if section == "partition" and "mode" in values:
+        values = {**values, "mode": PartitionMode(values["mode"])}
+    return cls(**values)
+
+
+def from_dict(data: dict[str, Any]) -> ExperimentConfig:
+    unknown = set(data) - set(_SECTIONS)
+    if unknown:
+        raise ValueError(f"unknown config section(s): {sorted(unknown)}")
+    return ExperimentConfig(**{s: _build(s, data.get(s, {})) for s in _SECTIONS})
+
+
+def to_dict(config: ExperimentConfig) -> dict[str, Any]:
+    """Plain nested dict with enums flattened to their values (YAML/JSON safe)."""
+    return asdict(config, dict_factory=lambda kv: {
+        k: (v.value if isinstance(v, Enum) else v) for k, v in kv})
+
+
+def config_hash(config: ExperimentConfig) -> str:
+    """First 8 hex chars of the sha256 of the canonical (key-sorted) config."""
+    canonical = json.dumps(to_dict(config), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:8]
+
+
+def load_config(path: str | Path) -> ExperimentConfig:
+    with Path(path).open(encoding="utf-8") as fh:
+        return from_dict(yaml.safe_load(fh) or {})
+
+
+def dump_config(config: ExperimentConfig, path: str | Path) -> None:
+    text = yaml.safe_dump(to_dict(config), sort_keys=True, default_flow_style=False)
+    Path(path).write_text(text, encoding="utf-8")

@@ -1,0 +1,43 @@
+# Reference configuration: the thesis default cell (RQ1/RQ2 baseline).
+# Every field is listed explicitly; other configs are standalone copies with
+# edits, not overlays (no Hydra-style composition).
+
+dataset:
+  name: cifar10
+  num_classes: 10
+  root: data
+  val_split: 0.0
+
+partition:
+  mode: natural_per_class
+  K: 30
+  alpha: 0.5
+  beta: null
+  target_label_hd: null
+  target_quantity_hd: null
+  min_size_policy: 10
+  calibration_id: null
+
+model:
+  arch: cnn
+  in_channels: 3
+  num_classes: 10
+
+federated:
+  algorithm: fedavg
+  rounds: 40
+  local_epochs: 10
+  batch_size: 64
+  lr: 0.001
+  mu: 0.0
+  optimizer: adam
+  client_fraction: 1.0
+
+runtime:
+  trial: 0
+  deterministic: true
+  device: cuda
+  out_dir: results
+  partition_seed: null
+  init_seed: null
+  train_seed: null
