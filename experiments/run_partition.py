@@ -33,7 +33,7 @@ def build_partition(config, rng):
     labels = load_labels(config.dataset)
     client_indices = natural_per_class(
         labels, config.partition.K, config.partition.alpha, rng,
-        min_size=config.partition.min_size_policy)
+        min_size=config.partition.min_size_policy, size_cap=config.partition.size_cap)
     return labels, client_indices
 
 
@@ -74,6 +74,8 @@ def main() -> None:
         "beta": partition.beta,
         "target_label_hd": partition.target_label_hd,
         "target_quantity_hd": partition.target_quantity_hd,
+        "min_size_policy": partition.min_size_policy,
+        "size_cap": partition.size_cap,
         "partition_seed": seeds.partition,
         **metrics,
         "feasible": feasible(metrics, config),

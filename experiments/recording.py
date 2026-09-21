@@ -73,10 +73,17 @@ def read_jsonl(path: Path) -> list[dict]:
 
 
 def partition_id(config, partition_seed: int) -> str:
-    """Hash of exactly the fields that determine the split."""
+    """Hash of exactly the fields that determine the split.
+
+    Fields added after A4 enter the payload only when non-default, so every
+    partition_id recorded before them stays valid.
+    """
     p = config.partition
-    payload = json.dumps([config.dataset.name, p.K, p.mode.value, p.alpha, p.beta,
-                          p.min_size_policy, partition_seed], separators=(",", ":"))
+    fields = [config.dataset.name, p.K, p.mode.value, p.alpha, p.beta,
+              p.min_size_policy, partition_seed]
+    if p.size_cap != "none":
+        fields.append({"size_cap": p.size_cap})
+    payload = json.dumps(fields, separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()[:10]
 
 

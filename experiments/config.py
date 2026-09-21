@@ -19,6 +19,7 @@ import yaml
 ALGORITHMS = frozenset({"fedavg", "fedprox"})
 OPTIMIZERS = frozenset({"adam", "sgd"})
 DEVICES = frozenset({"cuda", "cpu"})
+SIZE_CAPS = ("none", "niid_bench")  # mirrors partitioning.dirichlet.SIZE_CAPS
 
 
 class PartitionMode(str, Enum):
@@ -51,8 +52,13 @@ class PartitionConfig:
     target_quantity_hd: float | None = None
     min_size_policy: int = 0            # min samples per client; redraw below it, 0 = off
     calibration_id: str | None = None   # calibration/{id}.json that resolved target HD -> alpha
+    size_cap: str = "none"              # "niid_bench" = FedArtML's N/K balancing term
 
     def __post_init__(self):
+        if self.size_cap not in SIZE_CAPS:
+            raise ValueError(f"size_cap must be one of {SIZE_CAPS}, got {self.size_cap!r}")
+        if self.size_cap != "none" and self.mode is not PartitionMode.NATURAL_PER_CLASS:
+            raise ValueError(f"size_cap applies to natural_per_class only, not {self.mode.value}")
         if self.K < 2:
             raise ValueError(f"K must be >= 2, got {self.K}")
         needs_alpha = self.mode is not PartitionMode.QUANTITY_ONLY
