@@ -1,4 +1,4 @@
-﻿# Federated Learning: Label and Quantity Skew Interaction
+# Federated Learning: Label and Quantity Skew Interaction
 
 Bachelor thesis project quantifying and disentangling label and quantity skew
 in Federated Learning - measuring the quantity-skew byproduct of standard
@@ -27,7 +27,9 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
 
 - partitioning/ - HD measurement, Dirichlet partitioning, two-stage nested allocator
   - metrics.py - Hellinger distance, realized skew metrics per partition
-  - dirichlet.py - per-class Dirichlet partitioning (`natural_per_class`)
+  - dirichlet.py - the two natural label-skew modes: `natural_per_class`
+    (optional FedArtML/NIID-Bench `size_cap`) and `natural_per_client`
+  - calibration.py - alpha -> realized label-HD curves and their inverse
 - models/ - CNN and DNN architectures
 - federated/ - FedAvg, FedProx, training loop
 - experiments/ - config schema, seeding, recording, runner scripts
@@ -36,19 +38,28 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - recording.py - partition store, run records, atomic writes, provenance
   - datasets.py - dataset label registry
   - run_partition.py - generate and record one partition
+  - grid.py, run_grid.py - grid expansion and the partition-stage sweep
 - config/ - base.yaml, smoke.yaml, grids/ (one per research question)
+- calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
 
 ## Usage
 
-Run the test suite:
+Run the test suite (slow tests need real data; add `--runslow`):
 
     python -m pytest tests/ -q
 
 Generate a partition (cached by `partition_id`; re-running is a no-op):
 
     python -m experiments.run_partition --config config/smoke.yaml
+
+Generate the RQ1 grid (270 partitions, ~1 min CPU), a calibration curve, and
+the FedArtML comparison:
+
+    python -m experiments.run_grid --grid config/grids/rq1.yaml
+    python -m partitioning.calibration --K 30 --mode natural_per_class --size-cap none
+    python -m analysis.b2_fedartml_comparison
 
 Check the environment and estimate the compute budget:
 
@@ -107,4 +118,13 @@ grid cell provably read identical splits. Reruns are byte-identical.
     quantify that gap on a shared seed
 - RQ1 grid written (63 partitions, no GPU needed); RQ2/RQ3 grids stubbed
   behind `status: blocked` pending the B6 calibration table
-- Next: B2 (per-client Dirichlet variant, FedArtML comparison)
+- B2 natural label-skew partitioning complete, 105 tests (+1 slow)
+  - `size_cap: niid_bench` replicates FedArtML's balancing term exactly on a
+    shared RNG stream; on real CIFAR-10 (K=30, 10 seeds) FedArtML and the local
+    capped variant agree in distribution
+  - `natural_per_client` (column-normalised, Dir(alpha*1_C)) matches per-class
+    label-HD at equal alpha with several times less quantity skew
+  - RQ1 grid: 270 cells; the 6 per-class cells at K=100, alpha=0.03 cannot
+    meet min_size=10 in 1000 redraws and are recorded as infeasible
+  - Calibration curves for CIFAR-10, K=30, all three natural variants
+- Next: B6 target label-HD levels from the curves; RQ2 natural-arm cap choice
