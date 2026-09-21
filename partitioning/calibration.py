@@ -209,12 +209,14 @@ def main() -> None:
     parser.add_argument("--size-cap", default="none", choices=("none", "niid_bench"))
     parser.add_argument("--min-size", type=int, default=10)
     parser.add_argument("--max-redraws", type=int, default=1000)
+    parser.add_argument("--out-dir", type=Path, default=CALIBRATION_DIR,
+                        help="write elsewhere first to keep git_dirty honest across runs")
     args = parser.parse_args()
 
     labels = load_labels(DatasetConfig(name=args.dataset, num_classes=args.num_classes))
     cal = compute_curve(labels, args.dataset, args.K, args.mode, args.size_cap,
                         args.min_size, max_redraws=args.max_redraws)
-    path = save_calibration(cal)
+    path = save_calibration(cal, args.out_dir)
     print(f"{'alpha':>10} {'label_hd':>18} {'monotone':>9} {'quantity_hd':>18} redraws")
     for p in cal["curve"]:
         redraws = [t["n_redraws"] for t in p["trials"]]
