@@ -176,9 +176,19 @@ def to_dict(config: ExperimentConfig) -> dict[str, Any]:
         k: (v.value if isinstance(v, Enum) else v) for k, v in kv})
 
 
+# Fields added after A4, with their defaults. They enter config_hash only when
+# set to something else, so every run recorded before them still resumes.
+_ADDED_FIELD_DEFAULTS = {"partition": {"size_cap": "none"}}
+
+
 def config_hash(config: ExperimentConfig) -> str:
     """First 8 hex chars of the sha256 of the canonical (key-sorted) config."""
-    canonical = json.dumps(to_dict(config), sort_keys=True, separators=(",", ":"))
+    data = to_dict(config)
+    for section, defaults in _ADDED_FIELD_DEFAULTS.items():
+        for key, default in defaults.items():
+            if data[section][key] == default:
+                del data[section][key]
+    canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()[:8]
 
 

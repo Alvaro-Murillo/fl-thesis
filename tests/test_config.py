@@ -53,3 +53,12 @@ def test_mode_parameter_requirements():
 
     data["partition"]["beta"] = 1.0
     assert from_dict(data).partition.mode is PartitionMode.COMBINED
+
+
+def test_smoke_config_hash_is_stable():
+    """runs.jsonl resumes by config_hash; fields added after A4 must not move it."""
+    config = load_config("config/smoke.yaml")
+    assert config_hash(config) == "acdc3d91"
+    capped = to_dict(config)
+    capped["partition"]["size_cap"] = "niid_bench"
+    assert config_hash(from_dict(capped)) != "acdc3d91"
