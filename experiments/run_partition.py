@@ -18,22 +18,25 @@ from experiments.recording import (
     git_provenance, partition_exists, partition_id, save_partition, utc_stamp,
 )
 from experiments.seeding import generator, seeds_for
-from partitioning.dirichlet import natural_per_class
+from partitioning.dirichlet import natural_per_class, natural_per_client
 from partitioning.metrics import partition_metrics
 
 FEASIBILITY_TOLERANCE = 0.05
 
 
 def build_partition(config, rng):
-    mode = config.partition.mode
-    if mode is not PartitionMode.NATURAL_PER_CLASS:
+    p = config.partition
+    if p.mode is PartitionMode.NATURAL_PER_CLASS:
+        partitioner, kwargs = natural_per_class, {"size_cap": p.size_cap}
+    elif p.mode is PartitionMode.NATURAL_PER_CLIENT:
+        partitioner, kwargs = natural_per_client, {}
+    else:
         raise NotImplementedError(
-            f"mode '{mode.value}' arrives with its work-plan task "
-            "(B3 quantity_only, B4 pure_label, B5 combined, B2 natural_per_client)")
+            f"mode '{p.mode.value}' arrives with its work-plan task "
+            "(B3 quantity_only, B4 pure_label, B5 combined)")
     labels = load_labels(config.dataset)
-    client_indices = natural_per_class(
-        labels, config.partition.K, config.partition.alpha, rng,
-        min_size=config.partition.min_size_policy, size_cap=config.partition.size_cap)
+    client_indices = partitioner(labels, p.K, p.alpha, rng,
+                                 min_size=p.min_size_policy, **kwargs)
     return labels, client_indices
 
 
