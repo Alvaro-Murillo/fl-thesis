@@ -84,7 +84,7 @@ def main() -> None:
 
     print(f"{pid}  K={partition.K} alpha={partition.alpha} "
           f"label_hd={metrics['realized_label_hd']:.4f} "
-          f"(pairwise {metrics['realized_label_hd_pairwise']:.4f})  "
+          f"(pairwise {metrics['realized_label_hd_pairwise']})  "
           f"quantity_hd={metrics['realized_quantity_hd']:.4f}  "
           f"sizes {metrics['min_client_size']}-{metrics['max_client_size']}  "
           f"feasible={row['feasible']}")

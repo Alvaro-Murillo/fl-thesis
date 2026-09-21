@@ -73,6 +73,12 @@ def test_partition_fields_do_change_partition_id():
                partition_id(base, seeds_for(base).partition)
 
 
+def test_smoke_partition_id_is_stable():
+    """Recorded IDs are cache keys; a schema change must not move them."""
+    config = config_with()
+    assert partition_id(config, seeds_for(config).partition) == "30fbc685a3"
+
+
 def test_store_roundtrip_and_no_tmp_left(tmp_path):
     config = config_with()
     pid = partition_id(config, seeds_for(config).partition)
