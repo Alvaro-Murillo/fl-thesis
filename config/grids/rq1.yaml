@@ -1,25 +1,31 @@
 # RQ1 - the quantity-skew byproduct of standard Dirichlet label partitioning.
 #
 # Partition-only: no training, no GPU, fully regenerable from partitions.jsonl.
-# Every cell is one partition; the sweep below expands to 63 of them (7 alphas
-# x 3 client counts x 3 trials), a few seconds of CPU each.
+# 3 cases x 10 alphas x 3 client counts x 3 trials = 270 partitions. K = 30 is
+# the headline setting; K = 10 and 100 show how the byproduct scales with K.
 #
-# Grid contract, as consumed by the sweep driver:
-#   base     path to a complete config; every field not swept comes from it
-#   constant dotted overrides applied to every cell
-#   sweep    dotted key -> list of values; cells are the cartesian product
+#   python -m experiments.run_grid --grid config/grids/rq1.yaml
+#
+# Grid contract: see experiments/grid.py. `cases` pairs settings that only make
+# sense together - size_cap applies to natural_per_class alone - and is crossed
+# with the cartesian `sweep`.
+#
+# Cells whose min-size redraw budget runs out (expected at small alpha, K=100)
+# are recorded as status `infeasible_min_size` rather than dropped: that the
+# common min_size=10 convention cannot be met there is itself an RQ1 finding.
 
 base: config/base.yaml
 
 constant:
   partition.min_size_policy: 10
+  partition.max_redraws: 1000
+
+cases:
+  - {partition.mode: natural_per_class, partition.size_cap: none}
+  - {partition.mode: natural_per_class, partition.size_cap: niid_bench}
+  - {partition.mode: natural_per_client, partition.size_cap: none}
 
 sweep:
-  partition.mode: [natural_per_class]
-  partition.alpha: [0.1, 0.3, 0.5, 1.0, 5.0, 10.0, 100.0]
+  partition.alpha: [0.03, 0.1, 0.3, 0.5, 1.0, 5.0, 6.0, 10.0, 100.0, 1000.0]
   partition.K: [10, 30, 100]
   runtime.trial: [0, 1, 2]
-
-# Add `natural_per_client` to partition.mode once B2 implements it - the
-# per-class vs per-client contrast is the second half of RQ1, and FedArtML has
-# no per-client variant to borrow.

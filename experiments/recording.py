@@ -112,6 +112,21 @@ def save_partition(out_dir: str | Path, pid: str,
     return npz
 
 
+def record_infeasible(out_dir: str | Path, pid: str, row: dict) -> None:
+    """Record a cell that has no partition: sidecar JSON and jsonl row, no .npz."""
+    atomic_write_text(partition_dir(out_dir) / f"{pid}.json", json.dumps(row, indent=2))
+    append_jsonl(Path(out_dir) / "partitions.jsonl", row)
+
+
+def infeasible_recorded(out_dir: str | Path, pid: str, max_redraws: int) -> bool:
+    """True if this cell already exhausted the same redraw budget."""
+    sidecar = partition_dir(out_dir) / f"{pid}.json"
+    if not sidecar.exists():
+        return False
+    row = json.loads(sidecar.read_text(encoding="utf-8"))
+    return row.get("status") == "infeasible_min_size" and row.get("max_redraws") == max_redraws
+
+
 def load_partition(out_dir: str | Path, pid: str) -> list[np.ndarray]:
     with np.load(partition_dir(out_dir) / f"{pid}.npz") as data:
         return [data[key] for key in sorted(data.files)]

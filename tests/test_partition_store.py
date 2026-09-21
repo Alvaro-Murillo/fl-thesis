@@ -110,3 +110,38 @@ def test_unimplemented_modes_raise():
     config = config_with(partition={"mode": "combined", "beta": 1.0})
     with pytest.raises(NotImplementedError, match="B5"):
         build_partition(config, generator(0))
+
+
+def test_redraw_exhaustion_writes_an_infeasible_row_and_resumes(tmp_path, monkeypatch):
+    import experiments.run_partition as runner
+
+    config = config_with(partition={"alpha": 0.1, "min_size_policy": len(LABELS),
+                                    "max_redraws": 3},
+                         runtime={"out_dir": str(tmp_path)})
+    row = runner.generate_partition(config, labels=LABELS)
+    assert row["status"] == "infeasible_min_size"
+    assert row["n_redraws"] == 3 and row["max_redraws"] == 3
+    assert "realized_label_hd" not in row
+    pid = row["partition_id"]
+    assert not partition_exists(tmp_path, pid)
+    assert read_jsonl(tmp_path / "partitions.jsonl") == [row]
+    # Same budget: recorded, not retried. A bigger budget is a new attempt.
+    assert runner.generate_partition(config, labels=LABELS) is None
+    bigger = config_with(partition={"alpha": 0.1, "min_size_policy": len(LABELS),
+                                    "max_redraws": 4},
+                         runtime={"out_dir": str(tmp_path)})
+    assert runner.generate_partition(bigger, labels=LABELS)["n_redraws"] == 4
+
+
+def test_generated_row_records_redraws_and_settings(tmp_path):
+    import experiments.run_partition as runner
+
+    config = config_with(runtime={"out_dir": str(tmp_path)})
+    row = runner.generate_partition(config, labels=LABELS)
+    assert row["status"] == "generated"
+    assert row["partition_id"] == "30fbc685a3"
+    assert row["n_redraws"] >= 0
+    for key in ("size_cap", "min_size_policy", "max_redraws", "trial",
+                "n_empty_clients", "realized_quantity_hd_pairwise"):
+        assert key in row
+    assert runner.generate_partition(config, labels=LABELS) is None

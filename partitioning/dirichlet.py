@@ -60,24 +60,44 @@ def _split_by_proportions(idx, proportions, client_indices) -> None:
         client.extend(chunk.tolist())
 
 
-def _redraw_until_min_size(draw, K, alpha, min_size, max_redraws) -> list[np.ndarray]:
+class MinSizeInfeasible(RuntimeError):
+    """No draw in `max_redraws` attempts gave every client >= min_size samples.
+
+    Raised, never swallowed: the minimum is not relaxed and the loop does not
+    continue. Runners record the cell as explicitly infeasible.
+    """
+
+    def __init__(self, K, alpha, min_size, max_redraws):
+        self.K, self.alpha, self.min_size, self.max_redraws = K, alpha, min_size, max_redraws
+        super().__init__(
+            f"no draw reached min_size={min_size} for K={K}, alpha={alpha} in "
+            f"{max_redraws} attempts; lower min_size_policy or raise alpha")
+
+
+def _redraw_until_min_size(draw, K, alpha, min_size, max_redraws,
+                           stats: dict | None) -> list[np.ndarray]:
     """Call `draw()` until every client holds >= min_size samples.
 
     `draw` returns K index lists, or None for a draw rejected outright.
+    `stats["n_redraws"]` is set to the number of rejected draws.
     """
-    for _ in range(max_redraws):
+    if max_redraws < 1:
+        raise ValueError(f"max_redraws must be >= 1, got {max_redraws}")
+    for attempt in range(max_redraws):
         client_indices = draw()
         if client_indices is not None and min(map(len, client_indices)) >= min_size:
+            if stats is not None:
+                stats["n_redraws"] = attempt
             return [np.sort(np.asarray(c, dtype=np.int32)) for c in client_indices]
 
-    raise RuntimeError(
-        f"no draw reached min_size={min_size} for K={K}, alpha={alpha} in "
-        f"{max_redraws} attempts; lower min_size_policy or raise alpha")
+    if stats is not None:
+        stats["n_redraws"] = max_redraws
+    raise MinSizeInfeasible(K, alpha, min_size, max_redraws)
 
 
 def natural_per_class(labels, K: int, alpha: float, rng: np.random.Generator,
                       min_size: int = 0, max_redraws: int = 100,
-                      size_cap: str = "none") -> list[np.ndarray]:
+                      size_cap: str = "none", stats: dict | None = None) -> list[np.ndarray]:
     """Partition sample indices across K clients. Returns sorted int32 arrays."""
     if size_cap not in SIZE_CAPS:
         raise ValueError(f"size_cap must be one of {SIZE_CAPS}, got {size_cap!r}")
@@ -103,11 +123,12 @@ def natural_per_class(labels, K: int, alpha: float, rng: np.random.Generator,
             _split_by_proportions(idx_c, proportions, client_indices)
         return client_indices
 
-    return _redraw_until_min_size(draw, K, alpha, min_size, max_redraws)
+    return _redraw_until_min_size(draw, K, alpha, min_size, max_redraws, stats)
 
 
 def natural_per_client(labels, K: int, alpha: float, rng: np.random.Generator,
-                       min_size: int = 0, max_redraws: int = 100) -> list[np.ndarray]:
+                       min_size: int = 0, max_redraws: int = 100,
+                       stats: dict | None = None) -> list[np.ndarray]:
     """Per-client Dirichlet mixes, column-normalised per class. Sorted int32 arrays."""
     labels = np.asarray(labels)
     classes = np.unique(labels)
@@ -127,4 +148,4 @@ def natural_per_client(labels, K: int, alpha: float, rng: np.random.Generator,
             _split_by_proportions(idx_c, mixes[:, j] / column_mass[j], client_indices)
         return client_indices
 
-    return _redraw_until_min_size(draw, K, alpha, min_size, max_redraws)
+    return _redraw_until_min_size(draw, K, alpha, min_size, max_redraws, stats)

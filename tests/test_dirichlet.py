@@ -107,3 +107,24 @@ def test_size_cap_validated_in_config():
         smoke_with(size_cap="bogus")
     with pytest.raises(ValueError, match="natural_per_class only"):
         smoke_with(mode="combined", beta=1.0, size_cap="niid_bench")
+
+
+@pytest.mark.parametrize("mode", ["natural_per_class", "natural_per_client"])
+def test_redraw_count_is_reported_and_exhaustion_is_typed(mode):
+    from partitioning import dirichlet
+
+    partitioner = getattr(dirichlet, mode)
+    stats = {}
+    partitioner(LABELS, 30, 5.0, np.random.default_rng(0), min_size=10, stats=stats)
+    assert stats["n_redraws"] == 0
+    stats = {}
+    with pytest.raises(dirichlet.MinSizeInfeasible) as err:
+        partitioner(LABELS, 30, 0.1, np.random.default_rng(0),
+                    min_size=len(LABELS), max_redraws=7, stats=stats)
+    assert stats["n_redraws"] == 7 and err.value.max_redraws == 7
+
+
+def test_max_redraws_does_not_enter_partition_id():
+    """A budget only decides whether a draw is found, never which one."""
+    pid = lambda c: partition_id(c, seeds_for(c).partition)
+    assert pid(smoke_with(max_redraws=5)) == pid(smoke_with()) == "30fbc685a3"

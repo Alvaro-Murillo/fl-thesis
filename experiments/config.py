@@ -53,12 +53,15 @@ class PartitionConfig:
     min_size_policy: int = 0            # min samples per client; redraw below it, 0 = off
     calibration_id: str | None = None   # calibration/{id}.json that resolved target HD -> alpha
     size_cap: str = "none"              # "niid_bench" = FedArtML's N/K balancing term
+    max_redraws: int = 1000             # min-size redraw budget; exhausted = infeasible row
 
     def __post_init__(self):
         if self.size_cap not in SIZE_CAPS:
             raise ValueError(f"size_cap must be one of {SIZE_CAPS}, got {self.size_cap!r}")
         if self.size_cap != "none" and self.mode is not PartitionMode.NATURAL_PER_CLASS:
             raise ValueError(f"size_cap applies to natural_per_class only, not {self.mode.value}")
+        if self.max_redraws < 1:
+            raise ValueError(f"max_redraws must be >= 1, got {self.max_redraws}")
         if self.K < 2:
             raise ValueError(f"K must be >= 2, got {self.K}")
         needs_alpha = self.mode is not PartitionMode.QUANTITY_ONLY
@@ -178,7 +181,7 @@ def to_dict(config: ExperimentConfig) -> dict[str, Any]:
 
 # Fields added after A4, with their defaults. They enter config_hash only when
 # set to something else, so every run recorded before them still resumes.
-_ADDED_FIELD_DEFAULTS = {"partition": {"size_cap": "none"}}
+_ADDED_FIELD_DEFAULTS = {"partition": {"size_cap": "none", "max_redraws": 1000}}
 
 
 def config_hash(config: ExperimentConfig) -> str:
