@@ -8,6 +8,8 @@ Grid contract:
               natural_per_class only), which a cartesian sweep cannot express
     sweep     dotted key -> list of values; cells are the cartesian product
     status    `blocked` makes the grid unrunnable (see rq2.yaml)
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

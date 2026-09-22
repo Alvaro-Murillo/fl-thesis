@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
+from partitioning.fedartml_compat import pairwise_hellinger
 from partitioning.metrics import (
-    class_counts, hellinger, pairwise_hellinger, partition_metrics,
-    quantity_hd_from_pairwise,
+    class_counts, hellinger, partition_metrics, quantity_hd_from_pairwise,
 )
 
 

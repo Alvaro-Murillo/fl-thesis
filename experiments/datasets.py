@@ -3,6 +3,8 @@
 Partitioning only ever needs the label vector, so loaders return labels alone -
 no images, no tensors, no GPU. `num_classes` is derived from the data and
 checked against the config; nothing assumes 10 classes or a uniform prior.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

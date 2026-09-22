@@ -10,6 +10,8 @@ a partial but parseable `history.csv`. Readers take the last row per `run_id`.
 
 Every write lands via a temp file plus `os.replace`, because a run killed
 mid-write on Windows otherwise leaves half a JSON file behind.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

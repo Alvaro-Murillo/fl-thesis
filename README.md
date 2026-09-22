@@ -27,6 +27,7 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
 
 - partitioning/ - HD measurement, Dirichlet partitioning, two-stage nested allocator
   - metrics.py - Hellinger distance, realized skew metrics per partition
+  - fedartml_compat.py - FedArtML's pairwise HD scale (adapted code, translation only)
   - dirichlet.py - the two natural label-skew modes, `natural_per_class` and
     `natural_per_client`
   - calibration.py - alpha -> realized label-HD curves and their inverse
@@ -159,6 +160,32 @@ commit.
 - Stable identifiers: a config field added later enters `partition_id` and
   `config_hash` only when it differs from its default (`_ADDED_FIELD_DEFAULTS`
   in config.py), so cached partitions and completed runs survive schema growth.
+
+## Third-party code and AI assistance
+
+Adapted code (MIT; full licence texts in `LICENSES/`):
+
+- `partitioning/fedartml_compat.py` `pairwise_hellinger` - from FedArtML 0.1.34
+  `hellinger_distance` (Copyright (c) 2022 La-Sapienza-University-Rome). Used
+  only to translate to FedArtML's pairwise scale, never as a grid axis.
+- `partitioning/dirichlet.py` `_split_by_proportions` and the per-class loop of
+  `natural_per_class` - from FedArtML 0.1.34
+  `SplitAsFederatedData.dirichlet_method`, itself derived from NIID-Bench
+  (Copyright (c) 2021 Yiqun Diao, Qinbin Li; Copyright (c) 2020 International
+  Business Machines).
+
+Each adapted function carries a header with source, version, licence and
+changes.
+
+AI assistance: parts of this code base were written with Claude Code
+(Anthropic) from specifications written by the author, and reviewed and tested
+by the author. Modules produced this way say so in their docstring.
+
+The thesis's own contributions are the author's own design: the HD-to-global
+label and quantity metrics (`partitioning/metrics.py`), the
+`natural_per_client` construction, the alpha -> label-HD calibration
+(`partitioning/calibration.py`), and (future) the B4 pure-label and B5 nested
+partitioning methods.
 
 ## Progress log
 

@@ -18,6 +18,8 @@ Inverse: `alpha_for_target` interpolates log(alpha) on a monotone
 to refine by bisection on log(alpha) against fresh partitions. Alphas where any
 trial exhausted its redraw budget are kept in the file but left out of the fit.
 Target HD levels are not chosen here.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

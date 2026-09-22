@@ -5,43 +5,35 @@ against uniform: CIFAR-10 and FMNIST happen to be class-balanced, Covtype (RQ4)
 is not. Quantity-HD is measured against uniform 1/K, which is correct by
 definition - every client holding an equal share is the no-quantity-skew case.
 
-Recorded per partition:
+The thesis metrics, recorded per partition:
 
     realized_label_hd              unweighted mean over NON-EMPTY clients of
-                                   H(p_client, p_global) - the thesis definition
-    realized_label_hd_pairwise     RMS of all pairwise H(p_i, p_j) over non-empty
-                                   clients - FedArtML's definition
+                                   H(p_client, p_global)
     realized_quantity_hd           H(n/N, uniform 1/K) - one distance; empty
                                    clients count in it
-    realized_quantity_hd_pairwise  FedArtML's quantity value: the pairwise scalar
-                                   on one-element share vectors [[n_k/N]], as
-                                   `create_clients()` computes it
 
-The pairwise values are a translation table to the FedArtML literature only;
-they are never grid axes. An empty client has no label distribution, so it is
-excluded from both label-HD scalars and counted in `n_empty_clients`.
+An empty client has no label distribution, so it is excluded from label-HD and
+counted in `n_empty_clients`.
+
+`partition_metrics` also records two `*_pairwise` values on FedArtML's scale,
+for translation to that literature only; they come from
+`partitioning.fedartml_compat`, which holds the adapted FedArtML code.
+`quantity_hd_from_pairwise` converts that quantity scale to ours exactly.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
+from partitioning.fedartml_compat import pairwise_hellinger
+
 
 def hellinger(p, q) -> float:
     """Hellinger distance between two probability vectors, in [0, 1]."""
     p, q = np.asarray(p, dtype=float), np.asarray(q, dtype=float)
     return float(np.sqrt(np.sum((np.sqrt(p) - np.sqrt(q)) ** 2) / 2))
-
-
-def pairwise_hellinger(distributions) -> float:
-    """RMS of all pairwise Hellinger distances (matches FedArtML's scalar)."""
-    d = np.asarray(distributions, dtype=float)
-    n = len(d)
-    if n < 2:
-        raise ValueError("pairwise Hellinger needs at least 2 distributions")
-    sq = np.sqrt(d)
-    squared = np.sum((sq[:, None, :] - sq[None, :, :]) ** 2, axis=2)
-    return float(min(np.sqrt(squared.sum() / (2 * n * (n - 1))), 1.0))
 
 
 def quantity_hd_from_pairwise(hd_pairwise: float, K: int) -> float:

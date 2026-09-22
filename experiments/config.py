@@ -3,6 +3,8 @@
 Frozen dataclasses are the schema; YAML is the input format. A config
 canonicalises to a key-sorted dict, so `config_hash` identifies a grid cell
 reproducibly across machines and runs. No Hydra: grids stay diffable in git.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

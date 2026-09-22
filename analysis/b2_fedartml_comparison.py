@@ -16,6 +16,8 @@ fedartml and local_niid_bench run the same algorithm on different RNG streams
 they should agree in distribution, not byte-for-byte.
 
 No training. Per-seed rows go to results/analysis/b2_fedartml_comparison.csv.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

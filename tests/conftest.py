@@ -3,6 +3,7 @@
 import pytest
 
 
+# Pattern from the pytest documentation ('Control skipping of tests according to command line option').
 def pytest_addoption(parser):
     parser.addoption("--runslow", action="store_true", help="run @pytest.mark.slow tests")
 

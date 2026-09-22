@@ -26,7 +26,10 @@ never touched - and the minimum is `min_size`.
 
 natural_per_client
 ------------------
-Written from scratch; FedArtML has no equivalent. Draws a K x C matrix of
+The per-client draw and the column normalisation are written from scratch;
+FedArtML has no equivalent. The proportional split helper they feed,
+`_split_by_proportions`, is the adapted FedArtML/NIID-Bench code shared with
+natural_per_class (see its attribution header). Draws a K x C matrix of
 per-client label mixes, pi_k ~ Dir(alpha * 1_C), then splits each class's
 FULL stock across clients in proportion to that class's column,
 pi_kc / sum_j pi_jc. Every sample is assigned; client sizes
@@ -45,6 +48,8 @@ The per-client construction in the literature (Hsu et al. 2019,
 arXiv:1909.06335 sec. 3; Acar et al. 2021, FedDyn) fixes client budgets
 instead, so it has no quantity byproduct by construction - that is B4's
 territory, not this mode's.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations
@@ -54,6 +59,18 @@ import numpy as np
 SIZE_CAPS = ("none", "niid_bench")
 
 
+# Adapted code: _split_by_proportions and the per-class loop in natural_per_class.draw
+#   Source:  FedArtML 0.1.34, fedartml/fl_split_as_federated_data.py,
+#            SplitAsFederatedData.dirichlet_method (loop at l. 175-187)
+#            https://github.com/Sapienza-University-Rome/FedArtML  (PyPI 0.1.34; git commit unknown)
+#            which derives from NIID-Bench partition.py
+#            https://github.com/Xtra-Computing/NIID-Bench  (git commit unknown)
+#   Licence: MIT, Copyright (c) 2022 La-Sapienza-University-Rome   - LICENSES/FedArtML-MIT.txt
+#            MIT, Copyright (c) 2021 Yiqun Diao, Qinbin Li;
+#                 Copyright (c) 2020 International Business Machines - LICENSES/NIID-Bench-MIT.txt
+#   Changes: explicit np.random.Generator instead of global reseeding (+100 per class);
+#            size-cap balancing term made optional (size_cap); bounded min-size redraw with a
+#            typed MinSizeInfeasible instead of an unbounded loop; zero-mass guard.
 def _split_by_proportions(idx, proportions, client_indices) -> None:
     cuts = (np.cumsum(proportions) * len(idx)).astype(int)[:-1]
     for client, chunk in zip(client_indices, np.split(idx, cuts)):
@@ -98,7 +115,11 @@ def _redraw_until_min_size(draw, K, alpha, min_size, max_redraws,
 def natural_per_class(labels, K: int, alpha: float, rng: np.random.Generator,
                       min_size: int = 0, max_redraws: int = 100,
                       size_cap: str = "none", stats: dict | None = None) -> list[np.ndarray]:
-    """Partition sample indices across K clients. Returns sorted int32 arrays."""
+    """Partition sample indices across K clients. Returns sorted int32 arrays.
+
+    The per-class loop in `draw` is adapted from FedArtML/NIID-Bench (MIT); see
+    the attribution header above `_split_by_proportions`.
+    """
     if size_cap not in SIZE_CAPS:
         raise ValueError(f"size_cap must be one of {SIZE_CAPS}, got {size_cap!r}")
     labels = np.asarray(labels)

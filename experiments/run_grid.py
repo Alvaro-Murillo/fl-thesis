@@ -5,6 +5,8 @@
 Labels are loaded once per dataset. Cached cells (an .npz, or an infeasible
 row with the same redraw budget) are skipped unless --force is passed, so a
 killed sweep resumes where it stopped. Blocked grids are refused.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

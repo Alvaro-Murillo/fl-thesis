@@ -10,6 +10,8 @@ whether spread across seeds came from partitioning or from training:
 Partitioners take an explicit `np.random.Generator`; the global `np.random`
 state is never touched. Seeds fit in uint32 so they can also be handed to
 FedArtML's `random_state`.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations

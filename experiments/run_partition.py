@@ -9,6 +9,8 @@ does. Re-running with the same config is a no-op unless --force is passed.
 A cell whose min-size redraw budget (`partition.max_redraws`) runs out is
 recorded as an explicitly infeasible row - status `infeasible_min_size`, no
 .npz, no metrics - rather than looping on or relaxing the minimum.
+
+AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
 from __future__ import annotations
