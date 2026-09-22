@@ -1,0 +1,5 @@
+# Tool configuration only. The project is not packaged; run everything from the repo root.
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
