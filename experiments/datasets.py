@@ -16,6 +16,7 @@ import numpy as np
 
 def _cifar10(root: str) -> np.ndarray:
     from torchvision.datasets import CIFAR10
+
     return np.asarray(CIFAR10(root=root, train=True, download=True).targets)
 
 
@@ -29,6 +30,5 @@ def load_labels(dataset) -> np.ndarray:
     labels = LOADERS[dataset.name](str(Path(dataset.root)))
     found = len(np.unique(labels))
     if found != dataset.num_classes:
-        raise ValueError(
-            f"{dataset.name} has {found} classes, config says {dataset.num_classes}")
+        raise ValueError(f"{dataset.name} has {found} classes, config says {dataset.num_classes}")
     return labels

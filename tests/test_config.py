@@ -4,7 +4,12 @@ import pytest
 import yaml
 
 from experiments.config import (
-    PartitionMode, config_hash, dump_config, from_dict, load_config, to_dict,
+    PartitionMode,
+    config_hash,
+    dump_config,
+    from_dict,
+    load_config,
+    to_dict,
 )
 
 CONFIG_DIR = "config"

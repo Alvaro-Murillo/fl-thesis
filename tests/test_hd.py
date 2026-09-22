@@ -5,7 +5,10 @@ import pytest
 
 from partitioning.fedartml_compat import pairwise_hellinger
 from partitioning.metrics import (
-    class_counts, hellinger, partition_metrics, quantity_hd_from_pairwise,
+    class_counts,
+    hellinger,
+    partition_metrics,
+    quantity_hd_from_pairwise,
 )
 
 
@@ -28,8 +31,7 @@ def test_pairwise_matches_fedartml():
     fedartml = pytest.importorskip("fedartml.function_base")
     rng = np.random.default_rng(0)
     dists = rng.dirichlet(np.full(10, 0.5), size=8)
-    assert pairwise_hellinger(dists) == pytest.approx(
-        fedartml.hellinger_distance(dists))
+    assert pairwise_hellinger(dists) == pytest.approx(fedartml.hellinger_distance(dists))
 
 
 def test_iid_partition_has_near_zero_skew():
@@ -63,7 +65,7 @@ def test_quantity_skew_is_independent_of_label_skew():
     client_indices, cursor = [], 0
     for share in shares:
         take = int(share * 500)
-        client_indices.append(np.concatenate([idx[cursor:cursor + take] for idx in by_class]))
+        client_indices.append(np.concatenate([idx[cursor : cursor + take] for idx in by_class]))
         cursor += take
 
     m = partition_metrics(labels, client_indices, num_classes=10)
@@ -119,8 +121,7 @@ def test_quantity_pairwise_matches_fedartml_on_a_partition():
     client_indices = np.split(np.arange(5000), [100, 700, 2000, 4000])
     m = partition_metrics(labels, client_indices, num_classes=10)
     shares = [[len(c) / 5000] for c in client_indices]
-    assert m["realized_quantity_hd_pairwise"] == pytest.approx(
-        fedartml.hellinger_distance(shares))
+    assert m["realized_quantity_hd_pairwise"] == pytest.approx(fedartml.hellinger_distance(shares))
 
 
 def test_empty_clients_are_excluded_from_label_hd_but_counted():
@@ -132,8 +133,11 @@ def test_empty_clients_are_excluded_from_label_hd_but_counted():
 
     assert with_empty["n_empty_clients"] == 2
     assert without["n_empty_clients"] == 0
-    for key in ("realized_label_hd", "realized_label_hd_pairwise",
-                "max_per_client_label_deviation"):
+    for key in (
+        "realized_label_hd",
+        "realized_label_hd_pairwise",
+        "max_per_client_label_deviation",
+    ):
         assert with_empty[key] == pytest.approx(without[key])
     # ...but they do count as quantity skew
     assert with_empty["realized_quantity_hd"] > without["realized_quantity_hd"]

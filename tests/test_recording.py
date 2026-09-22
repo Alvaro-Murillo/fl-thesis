@@ -9,15 +9,40 @@ import pytest
 
 from experiments.config import config_hash, from_dict, load_config, to_dict
 from experiments.recording import (
-    RunRecorder, completed_runs, read_jsonl, runs_path, skip_if_exists,
+    RunRecorder,
+    completed_runs,
+    read_jsonl,
+    runs_path,
+    skip_if_exists,
 )
 
 REQUIRED_RUN_FIELDS = {
-    "run_id", "partition_id", "config_hash", "algorithm", "mu", "model", "rounds",
-    "local_epochs", "batch_size", "lr", "trial", "init_seed", "train_seed",
-    "deterministic", "final_acc", "best_acc", "rta", "wall_clock_s", "status",
-    "git_commit", "git_dirty", "torch_version", "cuda_version", "gpu_name",
-    "started_at", "finished_at",
+    "run_id",
+    "partition_id",
+    "config_hash",
+    "algorithm",
+    "mu",
+    "model",
+    "rounds",
+    "local_epochs",
+    "batch_size",
+    "lr",
+    "trial",
+    "init_seed",
+    "train_seed",
+    "deterministic",
+    "final_acc",
+    "best_acc",
+    "rta",
+    "wall_clock_s",
+    "status",
+    "git_commit",
+    "git_dirty",
+    "torch_version",
+    "cuda_version",
+    "gpu_name",
+    "started_at",
+    "finished_at",
 }
 
 
@@ -94,8 +119,11 @@ def test_failure_is_recorded_and_reraised(tmp_path):
 
 def test_oom_gets_its_own_status(tmp_path):
     with pytest.raises(RuntimeError):
-        dummy_run(smoke_config(), tmp_path,
-                  fail_with=RuntimeError("CUDA out of memory. Tried to allocate..."))
+        dummy_run(
+            smoke_config(),
+            tmp_path,
+            fail_with=RuntimeError("CUDA out of memory. Tried to allocate..."),
+        )
     assert read_jsonl(runs_path(tmp_path))[-1]["status"] == "oom"
 
 

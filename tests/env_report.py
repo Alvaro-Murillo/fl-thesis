@@ -11,9 +11,18 @@ import subprocess
 import sys
 
 PACKAGES = [
-    "torch", "torchvision", "numpy", "scipy", "pandas",
-    "matplotlib", "seaborn", "scikit-learn", "flwr", "fedartml",
-    "pyyaml", "tqdm",
+    "torch",
+    "torchvision",
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "scikit-learn",
+    "flwr",
+    "fedartml",
+    "pyyaml",
+    "tqdm",
 ]
 
 
@@ -50,6 +59,7 @@ for name in PACKAGES:
 section("PyTorch / CUDA")
 try:
     import torch
+
     line("torch", torch.__version__)
     line("Built for CUDA", torch.version.cuda)
     line("cuDNN", torch.backends.cudnn.version())
@@ -59,8 +69,10 @@ try:
         line("GPU", props.name)
         line("VRAM (GB)", round(props.total_memory / 1e9, 2))
         line("Compute capability", f"{props.major}.{props.minor}")
-        line("Driver CUDA (max)", shell(
-            "nvidia-smi --query-gpu=driver_version --format=csv,noheader"))
+        line(
+            "Driver CUDA (max)",
+            shell("nvidia-smi --query-gpu=driver_version --format=csv,noheader"),
+        )
 except ImportError:
     line("torch", "NOT INSTALLED")
 
@@ -72,6 +84,7 @@ line("Remote", shell("git remote get-url origin"))
 section("FedArtML location")
 try:
     import fedartml, os
+
     line("Path", os.path.dirname(fedartml.__file__))
 except ImportError:
     line("Path", "NOT INSTALLED")

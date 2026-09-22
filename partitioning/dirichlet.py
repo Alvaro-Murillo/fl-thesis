@@ -88,11 +88,13 @@ class MinSizeInfeasible(RuntimeError):
         self.K, self.alpha, self.min_size, self.max_redraws = K, alpha, min_size, max_redraws
         super().__init__(
             f"no draw reached min_size={min_size} for K={K}, alpha={alpha} in "
-            f"{max_redraws} attempts; lower min_size_policy or raise alpha")
+            f"{max_redraws} attempts; lower min_size_policy or raise alpha"
+        )
 
 
-def _redraw_until_min_size(draw, K, alpha, min_size, max_redraws,
-                           stats: dict | None) -> list[np.ndarray]:
+def _redraw_until_min_size(
+    draw, K, alpha, min_size, max_redraws, stats: dict | None
+) -> list[np.ndarray]:
     """Call `draw()` until every client holds >= min_size samples.
 
     `draw` returns K index lists, or None for a draw rejected outright.
@@ -112,9 +114,16 @@ def _redraw_until_min_size(draw, K, alpha, min_size, max_redraws,
     raise MinSizeInfeasible(K, alpha, min_size, max_redraws)
 
 
-def natural_per_class(labels, K: int, alpha: float, rng: np.random.Generator,
-                      min_size: int = 0, max_redraws: int = 100,
-                      size_cap: str = "none", stats: dict | None = None) -> list[np.ndarray]:
+def natural_per_class(
+    labels,
+    K: int,
+    alpha: float,
+    rng: np.random.Generator,
+    min_size: int = 0,
+    max_redraws: int = 100,
+    size_cap: str = "none",
+    stats: dict | None = None,
+) -> list[np.ndarray]:
     """Partition sample indices across K clients. Returns sorted int32 arrays.
 
     The per-class loop in `draw` is adapted from FedArtML/NIID-Bench (MIT); see
@@ -139,7 +148,8 @@ def natural_per_class(labels, K: int, alpha: float, rng: np.random.Generator,
                     # by zero here and produce NaN cut points.
                     raise RuntimeError(
                         f"degenerate draw: every client under the N/K cap drew zero "
-                        f"mass for class {c} (K={K}, alpha={alpha})")
+                        f"mass for class {c} (K={K}, alpha={alpha})"
+                    )
                 proportions = proportions / proportions.sum()
             _split_by_proportions(idx_c, proportions, client_indices)
         return client_indices
@@ -147,9 +157,15 @@ def natural_per_class(labels, K: int, alpha: float, rng: np.random.Generator,
     return _redraw_until_min_size(draw, K, alpha, min_size, max_redraws, stats)
 
 
-def natural_per_client(labels, K: int, alpha: float, rng: np.random.Generator,
-                       min_size: int = 0, max_redraws: int = 100,
-                       stats: dict | None = None) -> list[np.ndarray]:
+def natural_per_client(
+    labels,
+    K: int,
+    alpha: float,
+    rng: np.random.Generator,
+    min_size: int = 0,
+    max_redraws: int = 100,
+    stats: dict | None = None,
+) -> list[np.ndarray]:
     """Per-client Dirichlet mixes, column-normalised per class. Sorted int32 arrays."""
     labels = np.asarray(labels)
     classes = np.unique(labels)

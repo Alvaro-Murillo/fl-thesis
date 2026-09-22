@@ -25,7 +25,7 @@ import numpy as np
 # Changing this invalidates every seed recorded so far.
 MASTER_SEED = 20260912
 
-_UINT32 = 2 ** 32
+_UINT32 = 2**32
 
 
 @dataclass(frozen=True)
@@ -35,13 +35,16 @@ class Seeds:
     train: int
 
 
-def derive_seeds(trial: int, partition: int | None = None,
-                 init: int | None = None, train: int | None = None) -> Seeds:
+def derive_seeds(
+    trial: int, partition: int | None = None, init: int | None = None, train: int | None = None
+) -> Seeds:
     """Three independent streams for `trial`; explicit values override."""
     children = np.random.SeedSequence([MASTER_SEED, trial]).spawn(3)
     derived = [int(child.generate_state(1, dtype=np.uint32)[0]) for child in children]
-    seeds = [override if override is not None else default
-             for override, default in zip((partition, init, train), derived)]
+    seeds = [
+        override if override is not None else default
+        for override, default in zip((partition, init, train), derived)
+    ]
     for name, seed in zip(("partition", "init", "train"), seeds):
         if not 0 <= seed < _UINT32:
             raise ValueError(f"{name}_seed must fit in uint32, got {seed}")
@@ -51,8 +54,9 @@ def derive_seeds(trial: int, partition: int | None = None,
 def seeds_for(config) -> Seeds:
     """Seeds for an ExperimentConfig, honouring `runtime` overrides."""
     runtime = config.runtime
-    return derive_seeds(runtime.trial, runtime.partition_seed,
-                        runtime.init_seed, runtime.train_seed)
+    return derive_seeds(
+        runtime.trial, runtime.partition_seed, runtime.init_seed, runtime.train_seed
+    )
 
 
 def generator(seed: int) -> np.random.Generator:
@@ -65,7 +69,8 @@ def enable_cublas_determinism() -> None:
     if "torch" in sys.modules:
         raise RuntimeError(
             "torch is already imported - CUBLAS_WORKSPACE_CONFIG has no effect. "
-            "Call enable_cublas_determinism() before importing torch.")
+            "Call enable_cublas_determinism() before importing torch."
+        )
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 
@@ -80,7 +85,8 @@ def configure_torch(seeds: Seeds, deterministic: bool = True):
     if deterministic and os.environ.get("CUBLAS_WORKSPACE_CONFIG") != ":4096:8":
         raise RuntimeError(
             "deterministic mode needs CUBLAS_WORKSPACE_CONFIG=:4096:8 set before "
-            "torch was imported; call enable_cublas_determinism() first.")
+            "torch was imported; call enable_cublas_determinism() first."
+        )
     return torch
 
 

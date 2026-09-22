@@ -9,7 +9,7 @@ from experiments.seeding import seeds_for
 from partitioning.dirichlet import natural_per_client
 from partitioning.metrics import partition_metrics
 
-LABELS = np.repeat(np.arange(10), 600)                     # balanced, N = 6000
+LABELS = np.repeat(np.arange(10), 600)  # balanced, N = 6000
 IMBALANCED = np.repeat(np.arange(4), [3000, 900, 90, 10])  # Covtype-like skew
 
 
@@ -37,8 +37,9 @@ def test_min_size_is_honoured_and_exhaustion_raises():
     parts = natural_per_client(LABELS, 30, 0.1, np.random.default_rng(0), min_size=50)
     assert min(map(len, parts)) >= 50
     with pytest.raises(RuntimeError, match="min_size"):
-        natural_per_client(LABELS, 30, 0.1, np.random.default_rng(0),
-                           min_size=len(LABELS), max_redraws=3)
+        natural_per_client(
+            LABELS, 30, 0.1, np.random.default_rng(0), min_size=len(LABELS), max_redraws=3
+        )
 
 
 @pytest.mark.parametrize("labels", [LABELS, IMBALANCED])
@@ -52,9 +53,15 @@ def test_large_alpha_limit_is_iid_against_empirical_prior(labels):
 
 def test_quantity_byproduct_grows_as_alpha_falls():
     def mean_quantity_hd(alpha):
-        return np.mean([partition_metrics(
-            LABELS, natural_per_client(LABELS, 30, alpha, np.random.default_rng(s)),
-            10)["realized_quantity_hd"] for s in range(5)])
+        return np.mean(
+            [
+                partition_metrics(
+                    LABELS, natural_per_client(LABELS, 30, alpha, np.random.default_rng(s)), 10
+                )["realized_quantity_hd"]
+                for s in range(5)
+            ]
+        )
+
     low, mid, high = mean_quantity_hd(0.1), mean_quantity_hd(1.0), mean_quantity_hd(100.0)
     assert low > mid > high
     assert low > 0.02
@@ -74,5 +81,6 @@ def test_mode_is_registered_in_the_runner(monkeypatch):
     _, parts = runner.build_partition(config, np.random.default_rng(0))
     assert np.array_equal(np.sort(np.concatenate(parts)), np.arange(len(LABELS)))
     per_class = smoke_with()
-    assert partition_id(config, seeds_for(config).partition) != \
-           partition_id(per_class, seeds_for(per_class).partition)
+    assert partition_id(config, seeds_for(config).partition) != partition_id(
+        per_class, seeds_for(per_class).partition
+    )

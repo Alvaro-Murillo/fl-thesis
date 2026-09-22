@@ -21,7 +21,8 @@ def shimmed_fedartml(monkeypatch, rng):
     """
     module = pytest.importorskip("fedartml.fl_split_as_federated_data")
     fake_random = types.SimpleNamespace(
-        seed=lambda *_: None, shuffle=rng.shuffle, dirichlet=rng.dirichlet)
+        seed=lambda *_: None, shuffle=rng.shuffle, dirichlet=rng.dirichlet
+    )
 
     class NumpyShim:
         random = fake_random
@@ -35,16 +36,18 @@ def shimmed_fedartml(monkeypatch, rng):
 
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 5.0])
 def test_niid_bench_cap_replicates_fedartml_exactly(monkeypatch, alpha):
-    ours = natural_per_class(LABELS, 20, alpha, np.random.default_rng(7),
-                             min_size=10, size_cap="niid_bench")
+    ours = natural_per_class(
+        LABELS, 20, alpha, np.random.default_rng(7), min_size=10, size_cap="niid_bench"
+    )
     splitter = shimmed_fedartml(monkeypatch, np.random.default_rng(7))
     _, _, theirs, _ = splitter.dirichlet_method(LABELS, 20, alpha=alpha, random_state=0)
     assert all(np.array_equal(a, np.sort(b)) for a, b in zip(ours, theirs))
 
 
 def test_uncapped_differs_from_fedartml(monkeypatch):
-    ours = natural_per_class(LABELS, 20, 0.1, np.random.default_rng(7),
-                             min_size=10, size_cap="none")
+    ours = natural_per_class(
+        LABELS, 20, 0.1, np.random.default_rng(7), min_size=10, size_cap="none"
+    )
     splitter = shimmed_fedartml(monkeypatch, np.random.default_rng(7))
     _, _, theirs, _ = splitter.dirichlet_method(LABELS, 20, alpha=0.1, random_state=0)
     assert not all(np.array_equal(a, np.sort(b)) for a, b in zip(ours, theirs))
@@ -71,8 +74,9 @@ def test_cap_compresses_sizes_but_allows_within_class_overshoot():
     K, cap = 30, len(LABELS) / 30
     capped_max, uncapped_max, overshoot = [], [], False
     for seed in range(20):
-        capped = natural_per_class(LABELS, K, 0.1, np.random.default_rng(seed),
-                                   size_cap="niid_bench")
+        capped = natural_per_class(
+            LABELS, K, 0.1, np.random.default_rng(seed), size_cap="niid_bench"
+        )
         uncapped = natural_per_class(LABELS, K, 0.1, np.random.default_rng(seed))
         capped_max.append(max(map(len, capped)))
         uncapped_max.append(max(map(len, uncapped)))
@@ -119,8 +123,15 @@ def test_redraw_count_is_reported_and_exhaustion_is_typed(mode):
     assert stats["n_redraws"] == 0
     stats = {}
     with pytest.raises(dirichlet.MinSizeInfeasible) as err:
-        partitioner(LABELS, 30, 0.1, np.random.default_rng(0),
-                    min_size=len(LABELS), max_redraws=7, stats=stats)
+        partitioner(
+            LABELS,
+            30,
+            0.1,
+            np.random.default_rng(0),
+            min_size=len(LABELS),
+            max_redraws=7,
+            stats=stats,
+        )
     assert stats["n_redraws"] == 7 and err.value.max_redraws == 7
 
 

@@ -20,8 +20,9 @@ from experiments.run_partition import describe, generate_partition
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--grid", required=True, type=Path)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
@@ -40,8 +41,10 @@ def main() -> None:
         generated += 1
         infeasible += row["status"] != "generated"
         print(f"[{i}/{len(configs)}] {describe(row)}", flush=True)
-    print(f"{len(configs)} cells: {generated} generated ({infeasible} infeasible), "
-          f"{skipped} already recorded")
+    print(
+        f"{len(configs)} cells: {generated} generated ({infeasible} infeasible), "
+        f"{skipped} already recorded"
+    )
 
 
 if __name__ == "__main__":

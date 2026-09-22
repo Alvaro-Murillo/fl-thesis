@@ -28,10 +28,18 @@ class CNN(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(3, 32, 3), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(64, 64, 3), nn.ReLU(), nn.Flatten(),
-            nn.LazyLinear(64), nn.ReLU(), nn.Linear(64, num_classes),
+            nn.Conv2d(3, 32, 3),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 64, 3),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.LazyLinear(64),
+            nn.ReLU(),
+            nn.Linear(64, num_classes),
         )
 
     def forward(self, x):
@@ -51,8 +59,10 @@ def main():
         print(f"VRAM             {p.total_memory / 1e9:.2f} GB")
         print(f"Compute cap.     {p.major}.{p.minor}")
     else:
-        print("WARNING: CUDA unavailable - timings below are CPU-only and not "
-              "representative of the intended setup.")
+        print(
+            "WARNING: CUDA unavailable - timings below are CPU-only and not "
+            "representative of the intended setup."
+        )
 
     model = CNN().to(device)
     opt = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -87,11 +97,15 @@ def main():
     steps_per_run = (TRAIN_SIZE / BATCH_SIZE) * LOCAL_EPOCHS * NUM_ROUNDS
     minutes = steps_per_run * ms_per_step / 1000 / 60
 
-    print(f"\nOne FL run (K={NUM_CLIENTS}, R={NUM_ROUNDS}, E={LOCAL_EPOCHS}): "
-          f"{minutes:.1f} min ({steps_per_run:,.0f} steps)")
+    print(
+        f"\nOne FL run (K={NUM_CLIENTS}, R={NUM_ROUNDS}, E={LOCAL_EPOCHS}): "
+        f"{minutes:.1f} min ({steps_per_run:,.0f} steps)"
+    )
     print(f"{GRID_RUNS} runs: {minutes * GRID_RUNS / 60:.1f} h")
-    print("FLOOR, not a forecast: excludes data loading, per-round evaluation, "
-          "and FL orchestration overhead.")
+    print(
+        "FLOOR, not a forecast: excludes data loading, per-round evaluation, "
+        "and FL orchestration overhead."
+    )
 
 
 if __name__ == "__main__":

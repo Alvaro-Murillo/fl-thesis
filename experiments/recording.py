@@ -39,16 +39,19 @@ def utc_stamp() -> str:
 
 def _git(*args: str) -> str:
     try:
-        return subprocess.run(("git", *args), capture_output=True, text=True,
-                              timeout=10).stdout.strip()
+        return subprocess.run(
+            ("git", *args), capture_output=True, text=True, timeout=10
+        ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
 
 
 def git_provenance() -> dict:
     """Commit and dirty flag, so two numbers can be traced to the same code."""
-    return {"git_commit": _git("rev-parse", "--short", "HEAD") or "unknown",
-            "git_dirty": bool(_git("status", "--porcelain"))}
+    return {
+        "git_commit": _git("rev-parse", "--short", "HEAD") or "unknown",
+        "git_dirty": bool(_git("status", "--porcelain")),
+    }
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -81,8 +84,15 @@ def partition_id(config, partition_seed: int) -> str:
     partition_id recorded before them stays valid.
     """
     p = config.partition
-    fields = [config.dataset.name, p.K, p.mode.value, p.alpha, p.beta,
-              p.min_size_policy, partition_seed]
+    fields = [
+        config.dataset.name,
+        p.K,
+        p.mode.value,
+        p.alpha,
+        p.beta,
+        p.min_size_policy,
+        partition_seed,
+    ]
     if p.size_cap != "none":
         fields.append({"size_cap": p.size_cap})
     payload = json.dumps(fields, separators=(",", ":"))
@@ -97,8 +107,9 @@ def partition_exists(out_dir: str | Path, pid: str) -> bool:
     return (partition_dir(out_dir) / f"{pid}.npz").exists()
 
 
-def save_partition(out_dir: str | Path, pid: str,
-                   client_indices: list[np.ndarray], row: dict) -> Path:
+def save_partition(
+    out_dir: str | Path, pid: str, client_indices: list[np.ndarray], row: dict
+) -> Path:
     """Write the .npz, its metrics sidecar, and append the partitions.jsonl row."""
     directory = partition_dir(out_dir)
     directory.mkdir(parents=True, exist_ok=True)
@@ -134,8 +145,13 @@ def load_partition(out_dir: str | Path, pid: str) -> list[np.ndarray]:
         return [data[key] for key in sorted(data.files)]
 
 
-HISTORY_COLUMNS = ("round", "global_test_acc", "global_test_loss",
-                   "mean_client_train_loss", "round_wall_s")
+HISTORY_COLUMNS = (
+    "round",
+    "global_test_acc",
+    "global_test_loss",
+    "mean_client_train_loss",
+    "round_wall_s",
+)
 
 
 def torch_provenance() -> dict:
@@ -175,8 +191,13 @@ class RunRecorder:
     CUDA OOM) and re-raised, so a crashed run never looks completed.
     """
 
-    def __init__(self, config, partition_id: str, out_dir: str | Path | None = None,
-                 rta_target: float | None = None):
+    def __init__(
+        self,
+        config,
+        partition_id: str,
+        out_dir: str | Path | None = None,
+        rta_target: float | None = None,
+    ):
         self.config = config
         self.partition_id = partition_id
         self.rta_target = rta_target
@@ -200,14 +221,24 @@ class RunRecorder:
         self._append_row("running")
         return self
 
-    def log_round(self, round: int, global_test_acc: float, global_test_loss: float,
-                  mean_client_train_loss: float, round_wall_s: float) -> None:
+    def log_round(
+        self,
+        round: int,
+        global_test_acc: float,
+        global_test_loss: float,
+        mean_client_train_loss: float,
+        round_wall_s: float,
+    ) -> None:
         self.accuracies.append(global_test_acc)
-        self._writer.writerow({
-            "round": round, "global_test_acc": global_test_acc,
-            "global_test_loss": global_test_loss,
-            "mean_client_train_loss": mean_client_train_loss,
-            "round_wall_s": round_wall_s})
+        self._writer.writerow(
+            {
+                "round": round,
+                "global_test_acc": global_test_acc,
+                "global_test_loss": global_test_loss,
+                "mean_client_train_loss": mean_client_train_loss,
+                "round_wall_s": round_wall_s,
+            }
+        )
         self._history.flush()  # a kill -9 must still leave every finished round
 
     def finish(self, status: str = "completed") -> None:
@@ -227,31 +258,34 @@ class RunRecorder:
         done = status != "running"
         federated, runtime = self.config.federated, self.config.runtime
         seeds = seeds_for(self.config)
-        append_jsonl(runs_path(self.out_dir), {
-            "run_id": self.run_id,
-            "partition_id": self.partition_id,
-            "config_hash": self.run_id,
-            "algorithm": federated.algorithm,
-            "mu": federated.mu,
-            "model": self.config.model.arch,
-            "rounds": federated.rounds,
-            "local_epochs": federated.local_epochs,
-            "batch_size": federated.batch_size,
-            "lr": federated.lr,
-            "trial": runtime.trial,
-            "init_seed": seeds.init,
-            "train_seed": seeds.train,
-            "deterministic": runtime.deterministic,
-            "final_acc": self.accuracies[-1] if self.accuracies else None,
-            "best_acc": max(self.accuracies) if self.accuracies else None,
-            "rta": self._rta(),
-            "wall_clock_s": round(time.perf_counter() - self._started, 3) if done else None,
-            "status": status,
-            **git_provenance(),
-            **torch_provenance(),
-            "started_at": self._started_at,
-            "finished_at": utc_stamp() if done else None,
-        })
+        append_jsonl(
+            runs_path(self.out_dir),
+            {
+                "run_id": self.run_id,
+                "partition_id": self.partition_id,
+                "config_hash": self.run_id,
+                "algorithm": federated.algorithm,
+                "mu": federated.mu,
+                "model": self.config.model.arch,
+                "rounds": federated.rounds,
+                "local_epochs": federated.local_epochs,
+                "batch_size": federated.batch_size,
+                "lr": federated.lr,
+                "trial": runtime.trial,
+                "init_seed": seeds.init,
+                "train_seed": seeds.train,
+                "deterministic": runtime.deterministic,
+                "final_acc": self.accuracies[-1] if self.accuracies else None,
+                "best_acc": max(self.accuracies) if self.accuracies else None,
+                "rta": self._rta(),
+                "wall_clock_s": round(time.perf_counter() - self._started, 3) if done else None,
+                "status": status,
+                **git_provenance(),
+                **torch_provenance(),
+                "started_at": self._started_at,
+                "finished_at": utc_stamp() if done else None,
+            },
+        )
 
     def __enter__(self) -> RunRecorder:
         return self.start()

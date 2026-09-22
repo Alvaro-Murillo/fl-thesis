@@ -9,7 +9,11 @@ import pytest
 
 from experiments.config import from_dict, load_config, to_dict
 from experiments.recording import (
-    load_partition, partition_exists, partition_id, read_jsonl, save_partition,
+    load_partition,
+    partition_exists,
+    partition_id,
+    read_jsonl,
+    save_partition,
 )
 from experiments.seeding import generator, seeds_for
 from partitioning.dirichlet import natural_per_class
@@ -26,9 +30,13 @@ def config_with(**runtime_or_section):
 
 def partition_for(config):
     seeds = seeds_for(config)
-    return natural_per_class(LABELS, config.partition.K, config.partition.alpha,
-                             generator(seeds.partition),
-                             min_size=config.partition.min_size_policy)
+    return natural_per_class(
+        LABELS,
+        config.partition.K,
+        config.partition.alpha,
+        generator(seeds.partition),
+        min_size=config.partition.min_size_policy,
+    )
 
 
 def test_same_config_gives_identical_indices():
@@ -57,20 +65,24 @@ def test_trial_changes_the_partition():
 def test_training_knobs_do_not_change_partition_id():
     """Changing rounds must not invalidate a cached partition (DoD item 3)."""
     base = config_with()
-    for section, change in (("federated", {"rounds": 99}),
-                            ("federated", {"algorithm": "fedprox", "mu": 0.01}),
-                            ("runtime", {"device": "cpu"})):
+    for section, change in (
+        ("federated", {"rounds": 99}),
+        ("federated", {"algorithm": "fedprox", "mu": 0.01}),
+        ("runtime", {"device": "cpu"}),
+    ):
         other = config_with(**{section: change})
-        assert partition_id(other, seeds_for(other).partition) == \
-               partition_id(base, seeds_for(base).partition)
+        assert partition_id(other, seeds_for(other).partition) == partition_id(
+            base, seeds_for(base).partition
+        )
 
 
 def test_partition_fields_do_change_partition_id():
     base = config_with()
     for change in ({"K": 20}, {"alpha": 0.9}, {"min_size_policy": 25}):
         other = config_with(partition=change)
-        assert partition_id(other, seeds_for(other).partition) != \
-               partition_id(base, seeds_for(base).partition)
+        assert partition_id(other, seeds_for(other).partition) != partition_id(
+            base, seeds_for(base).partition
+        )
 
 
 def test_smoke_partition_id_is_stable():
@@ -115,9 +127,10 @@ def test_unimplemented_modes_raise():
 def test_redraw_exhaustion_writes_an_infeasible_row_and_resumes(tmp_path, monkeypatch):
     import experiments.run_partition as runner
 
-    config = config_with(partition={"alpha": 0.1, "min_size_policy": len(LABELS),
-                                    "max_redraws": 3},
-                         runtime={"out_dir": str(tmp_path)})
+    config = config_with(
+        partition={"alpha": 0.1, "min_size_policy": len(LABELS), "max_redraws": 3},
+        runtime={"out_dir": str(tmp_path)},
+    )
     row = runner.generate_partition(config, labels=LABELS)
     assert row["status"] == "infeasible_min_size"
     assert row["n_redraws"] == 3 and row["max_redraws"] == 3
@@ -127,9 +140,10 @@ def test_redraw_exhaustion_writes_an_infeasible_row_and_resumes(tmp_path, monkey
     assert read_jsonl(tmp_path / "partitions.jsonl") == [row]
     # Same budget: recorded, not retried. A bigger budget is a new attempt.
     assert runner.generate_partition(config, labels=LABELS) is None
-    bigger = config_with(partition={"alpha": 0.1, "min_size_policy": len(LABELS),
-                                    "max_redraws": 4},
-                         runtime={"out_dir": str(tmp_path)})
+    bigger = config_with(
+        partition={"alpha": 0.1, "min_size_policy": len(LABELS), "max_redraws": 4},
+        runtime={"out_dir": str(tmp_path)},
+    )
     assert runner.generate_partition(bigger, labels=LABELS)["n_redraws"] == 4
 
 
@@ -141,7 +155,13 @@ def test_generated_row_records_redraws_and_settings(tmp_path):
     assert row["status"] == "generated"
     assert row["partition_id"] == "30fbc685a3"
     assert row["n_redraws"] >= 0
-    for key in ("size_cap", "min_size_policy", "max_redraws", "trial",
-                "n_empty_clients", "realized_quantity_hd_pairwise"):
+    for key in (
+        "size_cap",
+        "min_size_policy",
+        "max_redraws",
+        "trial",
+        "n_empty_clients",
+        "realized_quantity_hd_pairwise",
+    ):
         assert key in row
     assert runner.generate_partition(config, labels=LABELS) is None

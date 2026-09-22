@@ -14,8 +14,9 @@ def fake_partition(seed, K=10, num_classes=10):
 
 def test_seed_reproducibility():
     assert derive_seeds(0) == derive_seeds(0)
-    assert np.array_equal(fake_partition(derive_seeds(0).partition),
-                          fake_partition(derive_seeds(0).partition))
+    assert np.array_equal(
+        fake_partition(derive_seeds(0).partition), fake_partition(derive_seeds(0).partition)
+    )
 
 
 def test_different_trial_differs():
@@ -32,7 +33,7 @@ def test_streams_are_independent():
 def test_seeds_are_uint32():
     for trial in range(3):
         seeds = derive_seeds(trial)
-        assert all(0 <= s < 2 ** 32 for s in (seeds.partition, seeds.init, seeds.train))
+        assert all(0 <= s < 2**32 for s in (seeds.partition, seeds.init, seeds.train))
 
 
 def test_overrides_are_honoured():
@@ -56,7 +57,9 @@ def test_partition_seed_ignores_training_fields():
     """Training knobs must not move the partition stream (DoD item 3)."""
     data = to_dict(load_config("config/base.yaml"))
     data["federated"]["rounds"] += 1
-    assert seeds_for(from_dict(data)).partition == seeds_for(load_config("config/base.yaml")).partition
+    assert (
+        seeds_for(from_dict(data)).partition == seeds_for(load_config("config/base.yaml")).partition
+    )
 
 
 def test_global_numpy_state_untouched():
@@ -68,4 +71,4 @@ def test_global_numpy_state_untouched():
 
 def test_rejects_out_of_range_override():
     with pytest.raises(ValueError, match="uint32"):
-        derive_seeds(0, partition=2 ** 32)
+        derive_seeds(0, partition=2**32)

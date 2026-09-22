@@ -43,15 +43,14 @@ def quantity_hd_from_pairwise(hd_pairwise: float, K: int) -> float:
     on one-element vectors is HD_lib^2 = (K - S^2) / (K (K-1)), and ours is
     HD^2 = 1 - S / sqrt(K). (FedArtML's clamp at 1 never binds: HD_lib^2 <= 1/(K-1).)
     """
-    inner = max(1.0 - (K - 1) * hd_pairwise ** 2, 0.0)
+    inner = max(1.0 - (K - 1) * hd_pairwise**2, 0.0)
     return float(np.sqrt(max(1.0 - np.sqrt(inner), 0.0)))
 
 
 def class_counts(labels, client_indices, num_classes) -> np.ndarray:
     """(K, num_classes) matrix of per-client class counts."""
     labels = np.asarray(labels)
-    return np.stack([np.bincount(labels[idx], minlength=num_classes)
-                     for idx in client_indices])
+    return np.stack([np.bincount(labels[idx], minlength=num_classes) for idx in client_indices])
 
 
 def partition_metrics(labels, client_indices, num_classes) -> dict:
@@ -70,8 +69,9 @@ def partition_metrics(labels, client_indices, num_classes) -> dict:
     return {
         "realized_label_hd": float(per_client_hd.mean()),
         # Undefined with fewer than two non-empty clients; None keeps the row valid JSON.
-        "realized_label_hd_pairwise": (pairwise_hellinger(client_dists)
-                                       if len(client_dists) >= 2 else None),
+        "realized_label_hd_pairwise": (
+            pairwise_hellinger(client_dists) if len(client_dists) >= 2 else None
+        ),
         "realized_quantity_hd": hellinger(size_shares, uniform),
         "realized_quantity_hd_pairwise": pairwise_hellinger(size_shares[:, None]),
         "mean_per_client_label_deviation": float(per_client_hd.mean()),

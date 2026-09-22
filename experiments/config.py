@@ -25,11 +25,11 @@ SIZE_CAPS = ("none", "niid_bench")  # mirrors partitioning.dirichlet.SIZE_CAPS
 
 
 class PartitionMode(str, Enum):
-    NATURAL_PER_CLASS = "natural_per_class"    # B2, FedArtML per-class Dirichlet draw
+    NATURAL_PER_CLASS = "natural_per_class"  # B2, FedArtML per-class Dirichlet draw
     NATURAL_PER_CLIENT = "natural_per_client"  # B2, per-client draw, from scratch
-    PURE_LABEL = "pure_label"                  # B4, quantity-corrected
-    QUANTITY_ONLY = "quantity_only"            # B3, MinSize-Dirichlet
-    COMBINED = "combined"                      # B5, two-stage nested
+    PURE_LABEL = "pure_label"  # B4, quantity-corrected
+    QUANTITY_ONLY = "quantity_only"  # B3, MinSize-Dirichlet
+    COMBINED = "combined"  # B5, two-stage nested
 
 
 @dataclass(frozen=True)
@@ -48,14 +48,14 @@ class DatasetConfig:
 class PartitionConfig:
     mode: PartitionMode
     K: int
-    alpha: float | None = None          # label-Dirichlet concentration
-    beta: float | None = None           # quantity-Dirichlet concentration
+    alpha: float | None = None  # label-Dirichlet concentration
+    beta: float | None = None  # quantity-Dirichlet concentration
     target_label_hd: float | None = None
     target_quantity_hd: float | None = None
-    min_size_policy: int = 0            # min samples per client; redraw below it, 0 = off
-    calibration_id: str | None = None   # calibration/{id}.json that resolved target HD -> alpha
-    size_cap: str = "none"              # "niid_bench" = FedArtML's N/K balancing term
-    max_redraws: int = 1000             # min-size redraw budget; exhausted = infeasible row
+    min_size_policy: int = 0  # min samples per client; redraw below it, 0 = off
+    calibration_id: str | None = None  # calibration/{id}.json that resolved target HD -> alpha
+    size_cap: str = "none"  # "niid_bench" = FedArtML's N/K balancing term
+    max_redraws: int = 1000  # min-size redraw budget; exhausted = infeasible row
 
     def __post_init__(self):
         if self.size_cap not in SIZE_CAPS:
@@ -68,14 +68,18 @@ class PartitionConfig:
             raise ValueError(f"K must be >= 2, got {self.K}")
         needs_alpha = self.mode is not PartitionMode.QUANTITY_ONLY
         needs_beta = self.mode in (PartitionMode.QUANTITY_ONLY, PartitionMode.COMBINED)
-        for name, value, needed in (("alpha", self.alpha, needs_alpha),
-                                    ("beta", self.beta, needs_beta)):
+        for name, value, needed in (
+            ("alpha", self.alpha, needs_alpha),
+            ("beta", self.beta, needs_beta),
+        ):
             if needed and (value is None or value <= 0):
                 raise ValueError(f"mode {self.mode.value} requires {name} > 0, got {value}")
             if not needed and value is not None:
                 raise ValueError(f"mode {self.mode.value} does not use {name}")
-        for name, value in (("target_label_hd", self.target_label_hd),
-                            ("target_quantity_hd", self.target_quantity_hd)):
+        for name, value in (
+            ("target_label_hd", self.target_label_hd),
+            ("target_quantity_hd", self.target_quantity_hd),
+        ):
             if value is not None and not 0.0 <= value < 1.0:
                 raise ValueError(f"{name} must be in [0, 1), got {value}")
 
@@ -94,7 +98,7 @@ class FederatedConfig:
     local_epochs: int
     batch_size: int
     lr: float
-    mu: float = 0.0                # FedProx proximal term
+    mu: float = 0.0  # FedProx proximal term
     optimizer: str = "adam"
     client_fraction: float = 1.0
 
@@ -144,7 +148,8 @@ class ExperimentConfig:
         if self.model.num_classes != self.dataset.num_classes:
             raise ValueError(
                 f"model.num_classes ({self.model.num_classes}) != "
-                f"dataset.num_classes ({self.dataset.num_classes})")
+                f"dataset.num_classes ({self.dataset.num_classes})"
+            )
 
 
 _SECTIONS = {f.name: f.type for f in fields(ExperimentConfig)}
@@ -177,8 +182,9 @@ def from_dict(data: dict[str, Any]) -> ExperimentConfig:
 
 def to_dict(config: ExperimentConfig) -> dict[str, Any]:
     """Plain nested dict with enums flattened to their values (YAML/JSON safe)."""
-    return asdict(config, dict_factory=lambda kv: {
-        k: (v.value if isinstance(v, Enum) else v) for k, v in kv})
+    return asdict(
+        config, dict_factory=lambda kv: {k: (v.value if isinstance(v, Enum) else v) for k, v in kv}
+    )
 
 
 # Fields added after A4, with their defaults. They enter config_hash only when
