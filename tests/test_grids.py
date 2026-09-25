@@ -32,7 +32,7 @@ def test_rq1_cells_are_distinct_partitions():
 
 
 def test_rq1_keeps_every_partition_of_the_a4_grid(tmp_path):
-    """The A4 grid's 63 cells must survive the extension with unchanged IDs."""
+    """The original 63-cell RQ1 grid must survive the extension with unchanged IDs."""
     a4 = tmp_path / "a4.yaml"
     a4.write_text(
         yaml.safe_dump(
@@ -62,10 +62,10 @@ def test_rq1_sweeps_only_partition_and_trial():
     assert len(federated) == 1
 
 
-def test_b3_quantity_grid_expands_to_quantity_only_cells():
+def test_quantity_skew_grid_expands_to_quantity_only_cells():
     from partitioning.calibration import DEFAULT_BETAS
 
-    configs = expand(f"{GRIDS}/b3_quantity.yaml")
+    configs = expand(f"{GRIDS}/quantity_skew.yaml")
     assert len(configs) == 30 * 3 * 3
     assert len({pid(c) for c in configs}) == 270
     assert all(c.partition.mode is PartitionMode.QUANTITY_ONLY for c in configs)

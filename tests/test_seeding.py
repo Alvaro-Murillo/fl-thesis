@@ -1,4 +1,4 @@
-"""Tests for the A4.2 seeding module."""
+"""Tests for the seeding module."""
 
 import numpy as np
 import pytest
@@ -8,7 +8,7 @@ from experiments.seeding import Seeds, derive_seeds, generator, seeds_for
 
 
 def fake_partition(seed, K=10, num_classes=10):
-    """Stand-in for a Dirichlet partitioner until B2 lands."""
+    """Stand-in for a Dirichlet partitioner: seeding is tested on its own."""
     return generator(seed).dirichlet(np.full(num_classes, 0.5), size=K)
 
 
@@ -54,7 +54,7 @@ def test_seeds_for_config(tmp_path):
 
 
 def test_partition_seed_ignores_training_fields():
-    """Training knobs must not move the partition stream (DoD item 3)."""
+    """Training knobs must not move the partition stream."""
     data = to_dict(load_config("config/base.yaml"))
     data["federated"]["rounds"] += 1
     assert (

@@ -30,8 +30,8 @@ floor(N * p_k) samples. Realized sizes therefore satisfy only
 - 30, not 31, on CIFAR-10 at K = 30 once any client is floored. That is
 FedArtML's behaviour and is kept on purpose; nothing re-imposes f afterwards.
 
-The work plan paraphrases the source paper's floor as MinRequiredSize / n;
-FedArtML's code uses (3C + 1) / N. The code is what is replicated here.
+Whether the source paper's floor includes FedArtML's + 1 (MinRequiredSize / n
+vs (3C + 1) / N) is not settled here; the code is what is replicated.
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
@@ -64,16 +64,17 @@ def min_size_bound(N: int, floor: int, n_floored: int) -> int:
 #   Changes: explicit np.random.Generator instead of np.random.seed on the global state;
 #            floor parameterised (FedArtML derives 3 * #classes + 1 from the labels; here it is
 #            an argument, by default from the registry's num_classes); size draw split from the
-#            index split so B5 can reuse the sizes; returns integer sizes; no pandas, no
-#            per-client reseed-and-shuffle (clients come back sorted); reports the number of
-#            floored clients; input validation.
+#            index split so the nested partitioner can reuse the sizes; returns integer sizes;
+#            no pandas, no per-client reseed-and-shuffle (clients come back sorted); reports
+#            the number of floored clients; input validation.
 def draw_client_sizes(
     N: int, K: int, beta: float, floor: int, rng: np.random.Generator, stats: dict | None = None
 ) -> np.ndarray:
     """K integer client sizes summing to N, MinSize-Dirichlet with a `floor`-sample floor.
 
     Adapted third-party code (FedArtML / NIID-Bench, MIT; see the header above),
-    not a thesis contribution - B5 imports it rather than copying it.
+    not a thesis contribution - the nested (combined) partitioner imports it
+    rather than copying it.
     `stats["n_floored_clients"]` is set to the number of drawn shares below
     floor / N. Realized sizes are bounded below by `min_size_bound`, not by
     `floor` (see the module docstring).

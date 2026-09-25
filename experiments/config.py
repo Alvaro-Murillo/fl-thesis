@@ -1,4 +1,4 @@
-"""Experiment configuration schema (work-plan task A4.1).
+"""Experiment configuration schema.
 
 Frozen dataclasses are the schema; YAML is the input format. A config
 canonicalises to a key-sorted dict, so `config_hash` identifies a grid cell
@@ -26,11 +26,11 @@ DEFAULT_MAX_REDRAWS = 1000
 
 
 class PartitionMode(str, Enum):
-    NATURAL_PER_CLASS = "natural_per_class"  # B2, FedArtML per-class Dirichlet draw
-    NATURAL_PER_CLIENT = "natural_per_client"  # B2, per-client draw, from scratch
-    PURE_LABEL = "pure_label"  # B4, quantity-corrected
-    QUANTITY_ONLY = "quantity_only"  # B3, MinSize-Dirichlet
-    COMBINED = "combined"  # B5, two-stage nested
+    NATURAL_PER_CLASS = "natural_per_class"  # FedArtML per-class Dirichlet draw
+    NATURAL_PER_CLIENT = "natural_per_client"  # per-client draw, from scratch
+    PURE_LABEL = "pure_label"  # label skew, quantity-corrected (not implemented yet)
+    QUANTITY_ONLY = "quantity_only"  # MinSize-Dirichlet quantity skew
+    COMBINED = "combined"  # two-stage nested label + quantity (not implemented yet)
 
 
 @dataclass(frozen=True)
@@ -145,7 +145,7 @@ class RuntimeConfig:
     deterministic: bool = True
     device: str = "cuda"
     out_dir: str = "results"
-    partition_seed: int | None = None  # None = derive from trial (A4.2)
+    partition_seed: int | None = None  # None = derive from trial (experiments.seeding)
     init_seed: int | None = None
     train_seed: int | None = None
 
@@ -207,7 +207,7 @@ def to_dict(config: ExperimentConfig) -> dict[str, Any]:
     )
 
 
-# Fields added after A4, with their defaults. They enter config_hash only when
+# Fields added after the first schema, with their defaults. They enter config_hash only when
 # set to something else, so every run recorded before them still resumes.
 _ADDED_FIELD_DEFAULTS = {
     "partition": {"size_cap": "none", "max_redraws": DEFAULT_MAX_REDRAWS, "quantity_floor": None}

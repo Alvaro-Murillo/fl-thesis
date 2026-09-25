@@ -43,14 +43,14 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - run_partition.py - generate and record one partition
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, grids/ (one per
-  research question, plus b3_quantity.yaml)
+  research question, plus quantity_skew.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
-  - b2_fedartml_comparison.py - shared-seed check of our partitioner against
-    FedArtML on real CIFAR-10
-  - b3_fedartml_comparison.py - the same check for `quantity_only`
-  - b3_measurements.py - quantity-HD range, beta for target levels, seed
+  - fedartml_comparison_label_skew.py - shared-seed check of our label-skew
+    partitioner against FedArtML on real CIFAR-10
+  - fedartml_comparison_quantity_skew.py - the same check for `quantity_only`
+  - quantity_skew_measurements.py - quantity-HD range, beta for target levels, seed
     spread, floor behaviour and incidental label-HD
 
 ## Usage
@@ -80,12 +80,12 @@ Build the beta -> quantity-HD curve for quantity_only:
 
     python -m partitioning.calibration --K 30 --mode quantity_only
 
-Compare against FedArtML on shared seeds (no training), and measure B3:
+Compare against FedArtML on shared seeds (no training), and measure quantity skew:
 
-    python -m analysis.b2_fedartml_comparison
-    python -m analysis.b3_fedartml_comparison
-    python -m experiments.run_grid --grid config/grids/b3_quantity.yaml
-    python -m analysis.b3_measurements
+    python -m analysis.fedartml_comparison_label_skew
+    python -m analysis.fedartml_comparison_quantity_skew
+    python -m experiments.run_grid --grid config/grids/quantity_skew.yaml
+    python -m analysis.quantity_skew_measurements
 
 Check the environment and estimate the compute budget:
 
@@ -127,9 +127,9 @@ relaxed or looped past: the cell is recorded as `infeasible_min_size`.
     default. Rows record the resolved `quantity_floor` and `n_floored_clients`.
   - On a shared RNG stream it matches FedArtML byte-for-byte.
   - `partitioning.quantity.draw_client_sizes` is the size draw on its own, for
-    B5 to import (not copy).
+    the nested `combined` partitioner to import (not copy).
 
-`pure_label` and `combined` arrive with B4 and B5.
+`pure_label` and `combined` are not implemented yet.
 
 ## Grid files
 
@@ -143,7 +143,7 @@ relaxed or looped past: the cell is recorded as `infeasible_min_size`.
 The RQ1 grid is 3 cases (per-class uncapped, per-class niid_bench, per-client)
 x 10 alphas x K in {10, 30, 100} x 3 trials = 270 partitions, about 40 s of CPU.
 
-The B3 grid (`b3_quantity.yaml`) is quantity_only at the 30 betas of the beta
+The quantity-skew grid (`quantity_skew.yaml`) is quantity_only at the 30 betas of the beta
 calibration curve (log-spaced, 0.001-1000) x K in {10, 30, 100} x 3 trials =
 270 partitions; its K = 30 cells are the curve's own partitions.
 
@@ -161,8 +161,8 @@ Everything lands under `results/` (gitignored), written atomically:
 - `runs/{run_id}/history.csv` - per-round accuracy and loss, flushed each round
 - `runs/{run_id}/config.yaml` - the resolved config, so a row stays readable
   after the schema moves on
-- `analysis/` - analysis-script outputs, e.g. `b2_fedartml_comparison.csv`,
-  `b3_fedartml_comparison.csv`, and `b3_measurements.py`'s tables and scatter
+- `analysis/` - analysis-script outputs, e.g. `fedartml_comparison_label_skew.csv`,
+  `fedartml_comparison_quantity_skew.csv`, and `quantity_skew_*` tables and scatter
 
 Partitions are addressed by the fields that determine the split, so training
 knobs never invalidate a cached partition, and FedAvg and FedProx at the same
@@ -214,8 +214,8 @@ Adapted code (MIT; full licence texts in `LICENSES/`):
   `SplitAsFederatedData.dirichlet_method_quant_skew(method="minsize-dirichlet")`,
   whose permutation + Dir(beta) + cumsum split comes from NIID-Bench's
   `iid-diff-quantity` partition. This replicates the source paper's
-  quantity-only condition; it is not a thesis contribution, and B5 imports it
-  rather than copying it.
+  quantity-only condition; it is not a thesis contribution, and the nested
+  `combined` partitioner imports it rather than copying it.
 
 Each adapted function carries a header with source, version, licence and
 changes.
@@ -227,8 +227,8 @@ by the author. Modules produced this way say so in their docstring.
 The thesis's own contributions are the author's own design: the HD-to-global
 label and quantity metrics (`partitioning/metrics.py`), the
 `natural_per_client` construction, the alpha -> label-HD and beta ->
-quantity-HD calibration (`partitioning/calibration.py`), and (future) the B4
-pure-label and B5 nested partitioning methods.
+quantity-HD calibration (`partitioning/calibration.py`), and (future) the
+pure-label and two-stage nested partitioning methods.
 
 ## Progress log
 
@@ -243,14 +243,14 @@ pure-label and B5 nested partitioning methods.
 - GPU benchmark (tests/gpu_check.py): 1.8 ms/step at batch 64, 42 MB peak VRAM.
   Floor estimate ~9.6 min per FL run, ~9.6 h for a 60-run grid - excludes data
   loading, evaluation and FL orchestration, so treat it as a floor
-- A4 reproducibility scaffolding complete: config schema, seeding, partition
+- Reproducibility scaffolding complete: config schema, seeding, partition
   store and results schema, with 48 tests passing
   - Determinism verified on the GPU: bit-exact reruns, +15.7% per step
   - Smoke partition (K=10, alpha=0.5) reproduces byte-identically; client
     sizes span 3104-8028, the quantity-skew byproduct RQ1 exists to measure
 - RQ1 grid written (63 partitions, no GPU needed); RQ2/RQ3 grids stubbed
-  behind `status: blocked` pending the B6 calibration table
-- B2 natural label-skew partitioning complete: 105 tests pass (+1 slow)
+  behind `status: blocked` pending the target-level calibration table
+- Natural label-skew partitioning complete: 105 tests pass (+1 slow)
   - `size_cap: niid_bench` matches FedArtML exactly on a shared RNG stream;
     on real CIFAR-10 (K=30, 10 seeds, 5 alphas) FedArtML and the local capped
     variant agree in distribution
@@ -264,7 +264,7 @@ pure-label and B5 nested partitioning methods.
     infeasible
   - Calibration curves for CIFAR-10, K=30: label-HD reaches ~0.76
     (per-class), ~0.77 (capped) and ~0.81 (per-client)
-- B3 quantity-skew partitioning (`quantity_only`) complete
+- Quantity-skew partitioning (`quantity_only`) complete
   - Matches FedArtML's minsize-dirichlet byte-for-byte on a shared RNG stream;
     on real CIFAR-10 (K=30, 10 seeds, 6 betas) the two agree in distribution
     (all |z| < 1.6)
@@ -274,6 +274,7 @@ pure-label and B5 nested partitioning methods.
   - Sampling is label-blind, but label-HD rises from 0.025 (equal split) to
     ~0.21 at small beta, because many floored ~30-sample clients carry large
     sampling noise in an unweighted mean
-  - Beta calibration curve committed; B3 grid of 270 partitions generated
-- Next: B6 target levels from the curves; capped vs uncapped for the RQ2
+  - Beta calibration curve committed; quantity-skew grid of 270 partitions
+    generated
+- Next: target levels from the curves; capped vs uncapped for the RQ2
   natural arm

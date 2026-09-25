@@ -1,6 +1,6 @@
 """Tests for partition addressing, the artifact store, and the partitioner.
 
-Covers A4.3 definition-of-done items 2 and 3 without touching a real dataset:
+Covers the partition-store guarantees without touching a real dataset:
 reruns are byte-identical, `trial` changes the partition, training knobs do not.
 """
 
@@ -63,7 +63,7 @@ def test_trial_changes_the_partition():
 
 
 def test_training_knobs_do_not_change_partition_id():
-    """Changing rounds must not invalidate a cached partition (DoD item 3)."""
+    """Changing rounds must not invalidate a cached partition."""
     base = config_with()
     for section, change in (
         ("federated", {"rounds": 99}),
@@ -93,7 +93,7 @@ def test_smoke_partition_id_is_stable():
 
 @pytest.mark.slow
 def test_smoke_partition_bytes_are_stable(tmp_path):
-    """Real CIFAR-10: the smoke partition's indices hash as they did before B3."""
+    """Real CIFAR-10: the smoke partition's indices hash to their pinned value."""
     import hashlib
 
     import experiments.run_partition as runner
@@ -134,7 +134,7 @@ def test_unimplemented_modes_raise():
     from experiments.run_partition import build_partition
 
     config = config_with(partition={"mode": "combined", "beta": 1.0})
-    with pytest.raises(NotImplementedError, match="B5"):
+    with pytest.raises(NotImplementedError, match="combined"):
         build_partition(config, generator(0))
 
 

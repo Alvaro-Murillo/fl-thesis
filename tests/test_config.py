@@ -1,4 +1,4 @@
-"""Tests for the A4.1 config schema."""
+"""Tests for the config schema."""
 
 import pytest
 import yaml
@@ -61,7 +61,7 @@ def test_mode_parameter_requirements():
 
 
 def test_smoke_config_hash_is_stable():
-    """runs.jsonl resumes by config_hash; fields added after A4 must not move it."""
+    """runs.jsonl resumes by config_hash; fields added later must not move it."""
     config = load_config("config/smoke.yaml")
     assert config_hash(config) == "acdc3d91"
     capped = to_dict(config)

@@ -1,4 +1,4 @@
-"""Calibration curves: alpha -> realized label-HD (B2) and beta -> quantity-HD (B3).
+"""Calibration curves: alpha -> realized label-HD and beta -> realized quantity-HD.
 
     python -m partitioning.calibration --dataset cifar10 --K 30 \\
         --mode natural_per_class --size-cap none
@@ -13,9 +13,9 @@ label-HD and quantity-HD per point, the seeds and the git commit, and is
 written to calibration/{calibration_id}.json.
 
 A curve is indexed by `parameter` ("alpha" or "beta") and fitted on
-`fitted_metric` ("label_hd" or "quantity_hd"). Files written before B3 have
-neither key and are alpha / label-HD curves; their format and IDs are
-unchanged, and beta curves hash a different payload.
+`fitted_metric` ("label_hd" or "quantity_hd"). Alpha curves carry neither key
+(their file format predates beta curves and is unchanged, as are their IDs);
+beta curves hash a different payload.
 
 The trial seeds are the grid's own (`derive_seeds(trial).partition`), so a
 calibration point and the grid partition at the same (parameter, K, trial) are
@@ -62,7 +62,7 @@ def _mode_parameter(mode: str) -> str:
 
 
 def _min_size_policy(mode: str, min_size_policy: int | None) -> int:
-    """10 for the label-skew modes (the B2 convention); quantity_only never redraws."""
+    """10 for the label-skew modes (FedArtML's value); quantity_only never redraws."""
     if _mode_parameter(mode) == "beta":
         if min_size_policy not in (None, 0):
             raise ValueError("quantity_only never redraws; min_size_policy must be 0")
@@ -226,7 +226,7 @@ def compute_curve(
         dataset, K, mode, size_cap, min_size_policy, max_redraws, values, seeds, quantity_floor
     )
     head = {"calibration_id": cid}
-    if parameter == "beta":  # alpha files keep their pre-B3 format
+    if parameter == "beta":  # alpha files keep their original format
         head |= {"parameter": parameter, "fitted_metric": metric}
     tail = {"quantity_floor": quantity_floor} if parameter == "beta" else {}
     return {
@@ -251,7 +251,7 @@ def compute_curve(
 
 
 def curve_parameter(calibration: dict) -> str:
-    """ "alpha" or "beta"; files written before B3 carry no key and are alpha curves."""
+    """ "alpha" or "beta"; a file without the key is an alpha curve."""
     return calibration.get("parameter", "alpha")
 
 

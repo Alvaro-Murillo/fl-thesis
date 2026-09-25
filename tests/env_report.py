@@ -1,4 +1,4 @@
-"""Environment report for the thesis README / Experimental Setup (F2).
+"""Environment report for the thesis README / Experimental Setup section.
 
 Run from the project root with the venv active:
     python tests\\env_report.py

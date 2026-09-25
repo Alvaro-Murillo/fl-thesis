@@ -1,6 +1,6 @@
-"""B3 phase 2: independent-stream comparison of quantity_only against FedArtML.
+"""Independent-stream comparison of quantity_only against FedArtML.
 
-    python -m analysis.b3_fedartml_comparison [--seeds 10] [--betas 1000 10 1 0.3 0.1 0.03]
+    python -m analysis.fedartml_comparison_quantity_skew [--seeds 10] [--betas 1000 10 1 0.3 0.1 0.03]
 
 Real CIFAR-10 labels, K = 30, two variants per (beta, seed):
 
@@ -20,7 +20,7 @@ FedArtML does not report how many clients it floored; that count is recovered
 by replaying its seed -> permutation -> dirichlet draws on the global RNG
 (saved and restored).
 
-No training. Per-seed rows go to results/analysis/b3_fedartml_comparison.csv.
+No training. Per-seed rows go to results/analysis/fedartml_comparison_quantity_skew.csv.
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from analysis.b2_fedartml_comparison import comparison_seeds, preserved_global_rng
+from analysis.fedartml_comparison_label_skew import comparison_seeds, preserved_global_rng
 from experiments.config import DatasetConfig
 from experiments.datasets import load_labels
 from experiments.recording import atomic_write_text, git_provenance, utc_stamp
@@ -43,7 +43,7 @@ from partitioning.quantity import default_quantity_floor, min_size_bound, quanti
 K = 30
 BETAS = (1000.0, 10.0, 1.0, 0.3, 0.1, 0.03)
 N_SEEDS = 10
-OUT = Path("results/analysis/b3_fedartml_comparison.csv")
+OUT = Path("results/analysis/fedartml_comparison_quantity_skew.csv")
 VARIANTS = ("fedartml", "local")
 COMPARED = (
     "realized_quantity_hd",
@@ -68,7 +68,8 @@ def fedartml_floored(N: int, K: int, beta: float, seed: int, floor: int) -> int:
     """Clients FedArtML floored for this seed, by replaying its draws.
 
     Replays seed -> permutation -> dirichlet on the global RNG; the replay is
-    checked against FedArtML's own client sizes in tests/test_b3_fedartml_comparison.py.
+    checked against FedArtML's own client sizes in
+    tests/test_fedartml_comparison_quantity_skew.py.
     """
     return int((_replayed_shares(N, K, beta, seed) < floor / N).sum())
 

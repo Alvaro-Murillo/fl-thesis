@@ -1,4 +1,4 @@
-"""Artifact store, atomic writes and provenance (work-plan tasks A4.3/A4.4).
+"""Artifact store, atomic writes and provenance.
 
 Partitions are content-addressed: `partition_id` hashes only the fields that
 change the split, so FedAvg and FedProx at the same grid cell provably read the
@@ -80,7 +80,7 @@ def read_jsonl(path: Path) -> list[dict]:
 def partition_id(config, partition_seed: int) -> str:
     """Hash of exactly the fields that determine the split.
 
-    Fields added after A4 enter the payload only when non-default, so every
+    Fields added after the first schema enter the payload only when non-default, so every
     partition_id recorded before them stays valid.
     """
     p = config.partition

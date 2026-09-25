@@ -1,21 +1,21 @@
-"""B3 phase 2: what deliberate quantity skew reaches (inputs to E1 / RQ1 and B6).
+"""What deliberate quantity skew reaches: range, target betas, spread, floor, label-HD.
 
-    python -m analysis.b3_measurements [--seeds 20]
+    python -m analysis.quantity_skew_measurements [--seeds 20]
 
 Sources, all CIFAR-10 (N = 50,000, C = 10), quantity_only, floor 31:
 
-    grid     the b3_quantity grid rows in results/partitions.jsonl
+    grid     the quantity_skew grid rows in results/partitions.jsonl
              (30 betas x K in {10, 30, 100} x 3 trials; run it first)
     curve    the committed beta calibration curve (K = 30, 3 trials)
     seeds    fresh partitions at every curve beta, K = 30, trials 0..n-1
              (trials 0-2 are the grid's own partitions)
 
-Prints the tables for the B3 report and writes, under results/analysis/:
+Prints the tables and writes, under results/analysis/:
 
-    b3_k30_seeds.csv        one row per (beta, trial) of the seed sweep
-    b3_targets.csv          beta for each target quantity-HD
-    b3_scatter_clients.csv  per-client (size, label-HD) behind the scatter
-    b3_label_hd_vs_size.png that scatter
+    quantity_skew_k30_seeds.csv        one row per (beta, trial) of the seed sweep
+    quantity_skew_targets.csv          beta for each target quantity-HD
+    quantity_skew_scatter_clients.csv  per-client (size, label-HD) behind the scatter
+    quantity_skew_label_hd_vs_size.png that scatter
 
 Measurements only: nothing here chooses target levels or corrects anything.
 
@@ -56,16 +56,18 @@ from partitioning.metrics import (
 )
 from partitioning.quantity import default_quantity_floor, min_size_bound, quantity_only
 
-GRID = Path("config/grids/b3_quantity.yaml")
+GRID = Path("config/grids/quantity_skew.yaml")
 CURVE_ID = "f09e0cfdf0"
 K = 30
 N_SEEDS = 20
-TOLERANCE = 0.05  # B6's feasibility tolerance
+TOLERANCE = 0.05  # the grid-feasibility tolerance, |realized - target| <= 0.05
 SCATTER_BETA = DEFAULT_BETAS[5]  # 0.0108, the curve beta nearest 0.01
 OUT = Path("results/analysis")
+PREFIX = "quantity_skew_"
 
 # (label, scale, value). Pairwise targets are the source paper's QHD levels on
-# FedArtML's scale; "ours" is HD to uniform. RQ1 anchors are the B2 byproduct levels.
+# FedArtML's scale; "ours" is HD to uniform. RQ1 anchors are the quantity-HD
+# byproduct levels measured for natural label skew.
 TARGETS = (
     ("paper QHD 0.10", "pairwise", 0.10),
     ("paper QHD 0.17", "pairwise", 0.17),
@@ -76,14 +78,14 @@ TARGETS = (
 
 
 def grid_rows() -> pd.DataFrame:
-    """The latest partitions.jsonl row for every b3_quantity grid cell."""
+    """The latest partitions.jsonl row for every quantity_skew grid cell."""
     configs = expand(GRID)
     out_dir = configs[0].runtime.out_dir
     latest = {r["partition_id"]: r for r in read_jsonl(Path(out_dir) / "partitions.jsonl")}
     pids = [partition_id(c, seeds_for(c).partition) for c in configs]
     missing = [p for p in pids if p not in latest]
     if missing:
-        raise SystemExit(f"{len(missing)} grid cells not generated; run the b3_quantity grid first")
+        raise SystemExit(f"{len(missing)} grid cells missing; run the quantity_skew grid first")
     return pd.DataFrame([latest[p] for p in pids])
 
 
@@ -325,29 +327,30 @@ def main() -> None:
         labels,
         scatter_parts,
         baseline["realized_label_hd"].mean(),
-        OUT / "b3_label_hd_vs_size.png",
+        OUT / f"{PREFIX}label_hd_vs_size.png",
     )
 
     for name, df in (
-        ("b3_k30_seeds.csv", sweep),
-        ("b3_targets.csv", targets),
-        ("b3_scatter_clients.csv", scatter_df),
+        ("k30_seeds.csv", sweep),
+        ("targets.csv", targets),
+        ("scatter_clients.csv", scatter_df),
     ):
         atomic_write_text(
-            OUT / name, df.assign(**provenance).to_csv(index=False, lineterminator="\n")
+            OUT / f"{PREFIX}{name}",
+            df.assign(**provenance).to_csv(index=False, lineterminator="\n"),
         )
 
     fmt = lambda v: f"{v:.4g}"
     with pd.option_context("display.width", 250, "display.max_columns", 30):
-        print("== 1. Achievable range ==")
+        print("== Achievable range ==")
         print(range_table.to_string(index=False, float_format=fmt))
         print(
             f"\nmax |quantity_hd_from_pairwise - direct| over {len(grid) + len(sweep)} rows: "
             f"{conversion_gap:.2e}"
         )
-        print("\n== 2-3. Targets (paper translation, RQ1 anchors) ==")
+        print("\n== Target betas (paper translation, RQ1 anchors) ==")
         print(targets.to_string(index=False, float_format=fmt))
-        print(f"\n== 4-6. Per beta, K = {K}, {args.seeds} seeds ==")
+        print(f"\n== Per beta: spread, floor, label-HD; K = {K}, {args.seeds} seeds ==")
         print(beta_table.to_string(index=False, float_format=fmt))
         b = baseline
         print(

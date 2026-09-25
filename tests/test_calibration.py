@@ -118,7 +118,7 @@ COMMITTED_ALPHA_CURVES = ("96fb06debf", "d85a67a9c5", "34b3a4dc67")
 
 @pytest.mark.parametrize("cid", COMMITTED_ALPHA_CURVES)
 def test_committed_alpha_curve_ids_are_unchanged(cid):
-    """The pre-B3 files keep their IDs and read as alpha / label-HD curves."""
+    """The committed alpha curves keep their IDs and read as alpha / label-HD curves."""
     cal = load_calibration(cid)
     assert "parameter" not in cal and curve_parameter(cal) == "alpha"
     assert cid == calibration_id(

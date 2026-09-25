@@ -1,4 +1,4 @@
-"""B2 phase 3: FedArtML and our capped partitioner agree in distribution.
+"""FedArtML and our capped label-skew partitioner agree in distribution.
 
 Tolerance: |mean_fedartml - mean_local| <= 4 * SE, SE = sqrt(sd_f^2/n + sd_l^2/n)
 over the n = 10 shared seeds. Both variants run the same algorithm on
@@ -11,7 +11,7 @@ largest gap 2.5 SE at alpha = 1000 with 10 seeds, which shrank to 0.05 SE with
 import numpy as np
 import pytest
 
-from analysis.b2_fedartml_comparison import ALPHAS, comparison_seeds, run
+from analysis.fedartml_comparison_label_skew import ALPHAS, comparison_seeds, run
 from experiments.config import DatasetConfig
 from experiments.datasets import load_labels
 
@@ -31,7 +31,7 @@ def test_fedartml_and_local_capped_agree_on_quantity_hd():
 
 
 def test_global_rng_is_restored_around_fedartml():
-    from analysis.b2_fedartml_comparison import fedartml_partition
+    from analysis.fedartml_comparison_label_skew import fedartml_partition
 
     labels = np.repeat(np.arange(10), 100)
     np.random.seed(99)

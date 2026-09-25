@@ -1,6 +1,6 @@
-"""B3 phase 2: FedArtML's minsize-dirichlet and quantity_only agree in distribution.
+"""FedArtML's minsize-dirichlet and quantity_only agree in distribution.
 
-Tolerance, as in B2: |mean_fedartml - mean_local| <= 4 * SE,
+Tolerance, as for the label-skew comparison: |mean_fedartml - mean_local| <= 4 * SE,
 SE = sqrt(sd_f^2/n + sd_l^2/n) over n = 10 seeds per beta, on independent RNG
 streams; P(|t| > 4) ~ 1e-3 per beta and metric at ~18 df.
 """
@@ -8,7 +8,7 @@ streams; P(|t| > 4) ~ 1e-3 per beta and metric at ~18 df.
 import numpy as np
 import pytest
 
-from analysis.b3_fedartml_comparison import BETAS, comparison_seeds, run, z_scores
+from analysis.fedartml_comparison_quantity_skew import BETAS, comparison_seeds, run, z_scores
 from experiments.config import DatasetConfig
 from experiments.datasets import load_labels
 
@@ -27,7 +27,7 @@ def test_fedartml_and_quantity_only_agree_on_real_cifar10():
 @pytest.mark.parametrize("beta", [0.01, 1.0])
 def test_floored_count_replay_matches_fedartml_sizes(beta):
     """The replayed draw, pushed through the floor, gives FedArtML's own client sizes."""
-    from analysis.b3_fedartml_comparison import _replayed_shares, fedartml_partition
+    from analysis.fedartml_comparison_quantity_skew import _replayed_shares, fedartml_partition
 
     labels, K, floor, seed = np.repeat(np.arange(10), 300), 30, 31, 12345
     N = len(labels)
@@ -43,7 +43,7 @@ def test_floored_count_replay_matches_fedartml_sizes(beta):
 
 
 def test_global_rng_is_restored_around_fedartml():
-    from analysis.b3_fedartml_comparison import fedartml_floored, fedartml_partition
+    from analysis.fedartml_comparison_quantity_skew import fedartml_floored, fedartml_partition
 
     labels = np.repeat(np.arange(10), 100)
     np.random.seed(99)

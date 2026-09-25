@@ -1,4 +1,4 @@
-"""Seed derivation and torch determinism (work-plan task A4.2).
+"""Seed derivation and torch determinism.
 
 One `trial` index derives three independent streams, so it is always known
 whether spread across seeds came from partitioning or from training:

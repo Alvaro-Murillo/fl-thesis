@@ -1,4 +1,4 @@
-"""Tests for quantity_only (B3): MinSize-Dirichlet sizes, label-blind assignment."""
+"""Tests for quantity_only: MinSize-Dirichlet sizes, label-blind assignment."""
 
 import numpy as np
 import pytest

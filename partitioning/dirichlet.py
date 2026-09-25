@@ -1,4 +1,4 @@
-"""Dirichlet label partitioning: the two "natural" modes of B2.
+"""Dirichlet label partitioning: the two "natural" label-skew modes.
 
 Both assign every sample and let client sizes emerge from the draw, so any
 quantity skew they show is an uncontrolled byproduct - the RQ1 measurement.
@@ -46,8 +46,8 @@ n_k = sum_c n_c pi_kc / sum_j pi_jc emerge from the draw.
 
 The per-client construction in the literature (Hsu et al. 2019,
 arXiv:1909.06335 sec. 3; Acar et al. 2021, FedDyn) fixes client budgets
-instead, so it has no quantity byproduct by construction - that is B4's
-territory, not this mode's.
+instead, so it has no quantity byproduct by construction - that belongs to
+the quantity-corrected pure_label mode, not this one.
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """

@@ -1,4 +1,4 @@
-# Smoke config for quantity_only (B3): the smallest cell that exercises
+# Smoke config for quantity_only: the smallest cell that exercises
 # MinSize-Dirichlet end to end. Not used by any reported experiment.
 #
 #   python -m experiments.run_partition --config config/smoke_quantity_only.yaml

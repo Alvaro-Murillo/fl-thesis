@@ -1,4 +1,4 @@
-"""Tests for the A4.4 run records: schema, resume, and crash behaviour."""
+"""Tests for the run records: schema, resume, and crash behaviour."""
 
 import csv
 import subprocess
@@ -150,7 +150,7 @@ def test_failed_run_is_not_skipped(tmp_path):
 
 
 def test_killed_run_leaves_running_row_and_partial_history(tmp_path):
-    """DoD item 5: a hard kill mid-run stays diagnosable."""
+    """A hard kill mid-run stays diagnosable."""
     script = textwrap.dedent(f"""
         import os, sys
         sys.path.insert(0, {str(tmp_path.cwd())!r})

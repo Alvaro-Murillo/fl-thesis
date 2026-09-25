@@ -1,10 +1,10 @@
-# B3 - deliberate quantity skew: quantity_only (MinSize-Dirichlet) across beta.
+# Deliberate quantity skew: quantity_only (MinSize-Dirichlet) across beta.
 #
 # Partition-only: no training, no GPU, fully regenerable from partitions.jsonl.
 # 30 betas x 3 client counts x 3 trials = 270 partitions. K = 30 is the
 # headline; K = 10 and 100 match the RQ1 robustness panel.
 #
-#   python -m experiments.run_grid --grid config/grids/b3_quantity.yaml
+#   python -m experiments.run_grid --grid config/grids/quantity_skew.yaml
 #
 # The betas are the exact float values of np.logspace(-3, 3, 30)
 # (partitioning.calibration.DEFAULT_BETAS; tests/test_grids.py checks this), so

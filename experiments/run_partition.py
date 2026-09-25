@@ -1,4 +1,4 @@
-"""Generate one partition and record it (work-plan task A4.3).
+"""Generate one partition and record it.
 
     python -m experiments.run_partition --config config/smoke.yaml
 
@@ -65,9 +65,7 @@ def build_partition(config, rng, labels=None, stats: dict | None = None):
     elif p.mode is PartitionMode.NATURAL_PER_CLIENT:
         partitioner, kwargs = natural_per_client, {}
     else:
-        raise NotImplementedError(
-            f"mode '{p.mode.value}' arrives with its work-plan task (B4 pure_label, B5 combined)"
-        )
+        raise NotImplementedError(f"mode '{p.mode.value}' is not implemented yet")
     labels = load_labels(config.dataset) if labels is None else labels
     client_indices = partitioner(
         labels,

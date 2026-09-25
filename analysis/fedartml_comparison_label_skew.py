@@ -1,6 +1,6 @@
-"""B2 phase 3: shared-seed comparison of our partitioner against FedArtML.
+"""Shared-seed comparison of our label-skew partitioner against FedArtML.
 
-    python -m analysis.b2_fedartml_comparison [--seeds 10] [--alphas 1000 6 1 0.3 0.03]
+    python -m analysis.fedartml_comparison_label_skew [--seeds 10] [--alphas 1000 6 1 0.3 0.03]
 
 Real CIFAR-10 labels, K = 30, three variants per (alpha, seed):
 
@@ -15,7 +15,7 @@ fedartml and local_niid_bench run the same algorithm on different RNG streams
 (tests/test_dirichlet.py shows they coincide exactly on a shared stream), so
 they should agree in distribution, not byte-for-byte.
 
-No training. Per-seed rows go to results/analysis/b2_fedartml_comparison.csv.
+No training. Per-seed rows go to results/analysis/fedartml_comparison_label_skew.csv.
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
@@ -42,7 +42,7 @@ ALPHAS = (1000.0, 6.0, 1.0, 0.3, 0.03)
 N_SEEDS = 10
 MIN_SIZE = 10  # FedArtML's hardcoded value, matched locally
 MAX_REDRAWS = 5000  # ~1% of draws pass min_size at alpha=0.03, K=30 (observed)
-OUT = Path("results/analysis/b2_fedartml_comparison.csv")
+OUT = Path("results/analysis/fedartml_comparison_label_skew.csv")
 VARIANTS = ("fedartml", "local_niid_bench", "local_uncapped")
 
 

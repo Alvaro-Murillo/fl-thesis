@@ -1,4 +1,4 @@
-# RQ2 - STUB. Blocked on the B6 calibration table.
+# RQ2 - STUB. Blocked on the target-level calibration table.
 #
 # The headline claim is a paired comparison matched on REALIZED label-HD, so
 # the grid must be specified in target_label_hd, not alpha. Resolving a target
@@ -10,7 +10,7 @@
 # that carries it, rather than silently sweeping an incomplete specification.
 
 status: blocked
-blocked_on: B6 calibration table (target_label_hd -> alpha, per dataset x K x mode)
+blocked_on: target-level calibration table (target_label_hd -> alpha, per dataset x K x mode)
 
 base: config/base.yaml
 
@@ -18,7 +18,7 @@ base: config/base.yaml
 #
 # constant:
 #   partition.K: 30
-#   partition.calibration_id: <id of the B6 table>
+#   partition.calibration_id: <id of the calibration table>
 #
 # sweep:
 #   partition.mode: [natural_per_class, pure_label]

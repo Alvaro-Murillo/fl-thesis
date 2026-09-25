@@ -1,5 +1,5 @@
 # Smoke config: smallest cell that exercises the full pipeline end to end.
-# Used by the A4 definition-of-done checks, not by any reported experiment.
+# Used by the reproducibility checks, not by any reported experiment.
 
 dataset:
   name: cifar10
