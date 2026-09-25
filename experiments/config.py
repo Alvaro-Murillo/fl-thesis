@@ -22,6 +22,7 @@ ALGORITHMS = frozenset({"fedavg", "fedprox"})
 OPTIMIZERS = frozenset({"adam", "sgd"})
 DEVICES = frozenset({"cuda", "cpu"})
 SIZE_CAPS = ("none", "niid_bench")  # mirrors partitioning.dirichlet.SIZE_CAPS
+DEFAULT_MAX_REDRAWS = 1000
 
 
 class PartitionMode(str, Enum):
@@ -55,7 +56,8 @@ class PartitionConfig:
     min_size_policy: int = 0  # min samples per client; redraw below it, 0 = off
     calibration_id: str | None = None  # calibration/{id}.json that resolved target HD -> alpha
     size_cap: str = "none"  # "niid_bench" = FedArtML's N/K balancing term
-    max_redraws: int = 1000  # min-size redraw budget; exhausted = infeasible row
+    max_redraws: int = DEFAULT_MAX_REDRAWS  # min-size redraw budget; exhausted = infeasible row
+    quantity_floor: int | None = None  # quantity_only floor in samples; None = 3 * num_classes + 1
 
     def __post_init__(self):
         if self.size_cap not in SIZE_CAPS:
@@ -64,6 +66,24 @@ class PartitionConfig:
             raise ValueError(f"size_cap applies to natural_per_class only, not {self.mode.value}")
         if self.max_redraws < 1:
             raise ValueError(f"max_redraws must be >= 1, got {self.max_redraws}")
+        if self.quantity_floor is not None:
+            if self.mode is not PartitionMode.QUANTITY_ONLY:
+                raise ValueError(
+                    f"quantity_floor applies to quantity_only only, not {self.mode.value}"
+                )
+            if self.quantity_floor < 1:
+                raise ValueError(f"quantity_floor must be >= 1, got {self.quantity_floor}")
+        if self.mode is PartitionMode.QUANTITY_ONLY:
+            # No redraw happens in this mode, so no row may claim one did.
+            if self.min_size_policy != 0:
+                raise ValueError(
+                    "quantity_only never redraws; its only size mechanism is quantity_floor. "
+                    f"Set min_size_policy to 0, got {self.min_size_policy}"
+                )
+            if self.max_redraws != DEFAULT_MAX_REDRAWS:
+                raise ValueError(
+                    f"quantity_only never redraws; leave max_redraws at {DEFAULT_MAX_REDRAWS}"
+                )
         if self.K < 2:
             raise ValueError(f"K must be >= 2, got {self.K}")
         needs_alpha = self.mode is not PartitionMode.QUANTITY_ONLY
@@ -189,7 +209,9 @@ def to_dict(config: ExperimentConfig) -> dict[str, Any]:
 
 # Fields added after A4, with their defaults. They enter config_hash only when
 # set to something else, so every run recorded before them still resumes.
-_ADDED_FIELD_DEFAULTS = {"partition": {"size_cap": "none", "max_redraws": 1000}}
+_ADDED_FIELD_DEFAULTS = {
+    "partition": {"size_cap": "none", "max_redraws": DEFAULT_MAX_REDRAWS, "quantity_floor": None}
+}
 
 
 def config_hash(config: ExperimentConfig) -> str:

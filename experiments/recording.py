@@ -95,6 +95,8 @@ def partition_id(config, partition_seed: int) -> str:
     ]
     if p.size_cap != "none":
         fields.append({"size_cap": p.size_cap})
+    if p.quantity_floor is not None:
+        fields.append({"quantity_floor": p.quantity_floor})
     payload = json.dumps(fields, separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()[:10]
 

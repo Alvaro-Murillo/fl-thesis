@@ -47,6 +47,18 @@ def quantity_hd_from_pairwise(hd_pairwise: float, K: int) -> float:
     return float(np.sqrt(max(1.0 - np.sqrt(inner), 0.0)))
 
 
+def max_quantity_hd(N: int, K: int, min_size: float) -> float:
+    """Largest quantity-HD any split of N samples into K clients of >= min_size can have.
+
+    sum_k sqrt(n_k/N) is Schur-concave, so it is smallest - and HD largest - at
+    a vertex of {n_k >= min_size, sum n_k = N}: K-1 clients at min_size and one
+    holding the rest. With s_big = 1 - (K-1) min_size/N,
+    HD_max = sqrt(1 - sqrt(s_big/K) - (K-1) sqrt(min_size/(N K))).
+    """
+    s_big = 1.0 - (K - 1) * min_size / N
+    return float(np.sqrt(1.0 - np.sqrt(s_big / K) - (K - 1) * np.sqrt(min_size / (N * K))))
+
+
 def class_counts(labels, client_indices, num_classes) -> np.ndarray:
     """(K, num_classes) matrix of per-client class counts."""
     labels = np.asarray(labels)

@@ -91,6 +91,20 @@ def test_smoke_partition_id_is_stable():
     assert partition_id(config, seeds_for(config).partition) == "30fbc685a3"
 
 
+@pytest.mark.slow
+def test_smoke_partition_bytes_are_stable(tmp_path):
+    """Real CIFAR-10: the smoke partition's indices hash as they did before B3."""
+    import hashlib
+
+    import experiments.run_partition as runner
+
+    config = config_with(runtime={"out_dir": str(tmp_path)})
+    row = runner.generate_partition(config)
+    parts = load_partition(tmp_path, row["partition_id"])
+    digest = hashlib.sha256(b"".join(np.ascontiguousarray(c).tobytes() for c in parts))
+    assert digest.hexdigest() == "8c09716c79498d5ddfaf4471b84500ddd0ba2098edaf9ab76bb944500518023c"
+
+
 def test_store_roundtrip_and_no_tmp_left(tmp_path):
     config = config_with()
     pid = partition_id(config, seeds_for(config).partition)

@@ -1,0 +1,38 @@
+# Smoke config for quantity_only (B3): the smallest cell that exercises
+# MinSize-Dirichlet end to end. Not used by any reported experiment.
+#
+#   python -m experiments.run_partition --config config/smoke_quantity_only.yaml
+#
+# quantity_floor: null resolves to FedArtML's 3 * num_classes + 1 (31 here).
+# min_size_policy must be 0: this mode never redraws.
+
+dataset:
+  name: cifar10
+  num_classes: 10
+  root: data
+  val_split: 0.0
+
+partition:
+  mode: quantity_only
+  K: 10
+  beta: 0.5
+  min_size_policy: 0
+  quantity_floor: null
+
+model:
+  arch: cnn
+  in_channels: 3
+  num_classes: 10
+
+federated:
+  algorithm: fedavg
+  rounds: 3
+  local_epochs: 1
+  batch_size: 64
+  lr: 0.001
+
+runtime:
+  trial: 0
+  deterministic: true
+  device: cuda
+  out_dir: results
