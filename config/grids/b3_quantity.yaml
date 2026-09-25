@@ -1,0 +1,36 @@
+# B3 - deliberate quantity skew: quantity_only (MinSize-Dirichlet) across beta.
+#
+# Partition-only: no training, no GPU, fully regenerable from partitions.jsonl.
+# 30 betas x 3 client counts x 3 trials = 270 partitions. K = 30 is the
+# headline; K = 10 and 100 match the RQ1 robustness panel.
+#
+#   python -m experiments.run_grid --grid config/grids/b3_quantity.yaml
+#
+# The betas are the exact float values of np.logspace(-3, 3, 30)
+# (partitioning.calibration.DEFAULT_BETAS; tests/test_grids.py checks this), so
+# every K = 30 cell here is the same partition as the corresponding point of the
+# committed beta calibration curve.
+#
+# quantity_floor null = FedArtML's 3 * num_classes + 1 (31 on CIFAR-10).
+# min_size_policy must be 0 and alpha null: this mode never redraws and draws
+# no label mix.
+
+base: config/base.yaml
+
+constant:
+  partition.mode: quantity_only
+  partition.alpha: null
+  partition.min_size_policy: 0
+  partition.quantity_floor: null
+
+sweep:
+  partition.beta: [0.001, 0.0016102620275609393, 0.002592943797404667, 0.0041753189365604,
+    0.006723357536499335, 0.010826367338740546, 0.017433288221999882, 0.02807216203941177,
+    0.04520353656360243, 0.0727895384398315, 0.11721022975334805, 0.18873918221350977,
+    0.3039195382313198, 0.4893900918477494, 0.7880462815669912, 1.2689610031679222,
+    2.0433597178569416, 3.2903445623126677, 5.298316906283707, 8.531678524172806,
+    13.738237958832638, 22.122162910704503, 35.622478902624444, 57.361525104486816,
+    92.36708571873865, 148.73521072935117, 239.5026619987486, 385.6620421163472,
+    621.0169418915616, 1000.0]
+  partition.K: [10, 30, 100]
+  runtime.trial: [0, 1, 2]

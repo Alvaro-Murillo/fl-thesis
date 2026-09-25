@@ -62,6 +62,20 @@ def test_rq1_sweeps_only_partition_and_trial():
     assert len(federated) == 1
 
 
+def test_b3_quantity_grid_expands_to_quantity_only_cells():
+    from partitioning.calibration import DEFAULT_BETAS
+
+    configs = expand(f"{GRIDS}/b3_quantity.yaml")
+    assert len(configs) == 30 * 3 * 3
+    assert len({pid(c) for c in configs}) == 270
+    assert all(c.partition.mode is PartitionMode.QUANTITY_ONLY for c in configs)
+    assert all(c.partition.alpha is None and c.partition.min_size_policy == 0 for c in configs)
+    assert all(c.partition.quantity_floor is None for c in configs)
+    # Exactly the calibration grid, so K = 30 cells are the curve's partitions.
+    assert sorted({c.partition.beta for c in configs}) == list(DEFAULT_BETAS)
+    assert {c.partition.K for c in configs} == {10, 30, 100}
+
+
 @pytest.mark.parametrize("name", ["rq2.yaml", "rq3.yaml"])
 def test_blocked_grids_declare_themselves(name):
     """A stub must be refusable by the driver, not silently sweepable."""
