@@ -30,7 +30,9 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - fedartml_compat.py - FedArtML's pairwise HD scale (adapted code, translation only)
   - dirichlet.py - the two natural label-skew modes, `natural_per_class` and
     `natural_per_client`
-  - calibration.py - alpha -> realized label-HD curves and their inverse
+  - quantity.py - `quantity_only`, MinSize-Dirichlet quantity skew (adapted code)
+  - calibration.py - alpha -> label-HD and beta -> quantity-HD curves and their
+    inverses
 - models/ - CNN and DNN architectures
 - federated/ - FedAvg, FedProx, training loop
 - experiments/ - config schema, seeding, recording, runner scripts
@@ -40,12 +42,16 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - datasets.py - dataset label registry (currently `cifar10`)
   - run_partition.py - generate and record one partition
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
-- config/ - base.yaml, smoke.yaml, grids/ (one per research question)
+- config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, grids/ (one per
+  research question, plus b3_quantity.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
   - b2_fedartml_comparison.py - shared-seed check of our partitioner against
     FedArtML on real CIFAR-10
+  - b3_fedartml_comparison.py - the same check for `quantity_only`
+  - b3_measurements.py - quantity-HD range, beta for target levels, seed
+    spread, floor behaviour and incidental label-HD
 
 ## Usage
 
@@ -70,9 +76,16 @@ Build an alpha -> label-HD calibration curve (writes `calibration/{id}.json`):
     python -m partitioning.calibration --K 30 --mode natural_per_class --size-cap niid_bench
     python -m partitioning.calibration --K 30 --mode natural_per_client
 
-Compare against FedArtML on shared seeds (no training):
+Build the beta -> quantity-HD curve for quantity_only:
+
+    python -m partitioning.calibration --K 30 --mode quantity_only
+
+Compare against FedArtML on shared seeds (no training), and measure B3:
 
     python -m analysis.b2_fedartml_comparison
+    python -m analysis.b3_fedartml_comparison
+    python -m experiments.run_grid --grid config/grids/b3_quantity.yaml
+    python -m analysis.b3_measurements
 
 Check the environment and estimate the compute budget:
 
@@ -101,7 +114,22 @@ RQ1 measures.
 at most `max_redraws` attempts (default 1000). An exhausted budget is never
 relaxed or looped past: the cell is recorded as `infeasible_min_size`.
 
-`pure_label`, `quantity_only` and `combined` arrive with B4, B3 and B5.
+- `quantity_only` - deliberate quantity skew, replicating FedArtML 0.1.34's
+  `minsize-dirichlet`: client shares ~ Dir(beta*1_K), every share below
+  `quantity_floor`/N raised to it, renormalised, then one label-blind
+  permutation is cut into blocks of those sizes. Labels are never read, so
+  each client's label mix matches the global one only in expectation.
+  - `quantity_floor: null` (default) = FedArtML's 3 * num_classes + 1 (31 on
+    CIFAR-10). Renormalising after the floor makes it approximate: realized
+    sizes are only >= floor(f*N / (N + m*f)) for m floored clients - 30, not
+    31, on CIFAR-10 at K = 30. This is FedArtML's behaviour, kept on purpose.
+  - Never redraws: `min_size_policy` must be 0 and `max_redraws` stay at its
+    default. Rows record the resolved `quantity_floor` and `n_floored_clients`.
+  - On a shared RNG stream it matches FedArtML byte-for-byte.
+  - `partitioning.quantity.draw_client_sizes` is the size draw on its own, for
+    B5 to import (not copy).
+
+`pure_label` and `combined` arrive with B4 and B5.
 
 ## Grid files
 
@@ -114,6 +142,10 @@ relaxed or looped past: the cell is recorded as `infeasible_min_size`.
 
 The RQ1 grid is 3 cases (per-class uncapped, per-class niid_bench, per-client)
 x 10 alphas x K in {10, 30, 100} x 3 trials = 270 partitions, about 40 s of CPU.
+
+The B3 grid (`b3_quantity.yaml`) is quantity_only at the 30 betas of the beta
+calibration curve (log-spaced, 0.001-1000) x K in {10, 30, 100} x 3 trials =
+270 partitions; its K = 30 cells are the curve's own partitions.
 
 ## Results layout
 
@@ -129,16 +161,20 @@ Everything lands under `results/` (gitignored), written atomically:
 - `runs/{run_id}/history.csv` - per-round accuracy and loss, flushed each round
 - `runs/{run_id}/config.yaml` - the resolved config, so a row stays readable
   after the schema moves on
-- `analysis/` - analysis-script outputs, e.g. `b2_fedartml_comparison.csv`
+- `analysis/` - analysis-script outputs, e.g. `b2_fedartml_comparison.csv`,
+  `b3_fedartml_comparison.csv`, and `b3_measurements.py`'s tables and scatter
 
 Partitions are addressed by the fields that determine the split, so training
 knobs never invalidate a cached partition, and FedAvg and FedProx at the same
 grid cell provably read identical splits. Reruns are byte-identical.
 
 Calibration curves live in `calibration/` and are committed, because RQ2
-target levels are resolved against them. Each file records its alpha grid,
+target levels are resolved against them. Each file records its parameter grid,
 trial seeds (the grid's own), per-trial values, a monotone fit and the git
-commit.
+commit. Label-skew curves are indexed by alpha and fitted on label-HD
+(`alpha_for_target`); quantity_only curves carry `"parameter": "beta"` and are
+fitted on quantity-HD (`beta_for_target`). Files without a `parameter` key
+are alpha curves.
 
 ## Conventions
 
@@ -173,6 +209,13 @@ Adapted code (MIT; full licence texts in `LICENSES/`):
   `SplitAsFederatedData.dirichlet_method`, itself derived from NIID-Bench
   (Copyright (c) 2021 Yiqun Diao, Qinbin Li; Copyright (c) 2020 International
   Business Machines).
+- `partitioning/quantity.py` `draw_client_sizes` and the permutation + split of
+  `quantity_only` - from FedArtML 0.1.34
+  `SplitAsFederatedData.dirichlet_method_quant_skew(method="minsize-dirichlet")`,
+  whose permutation + Dir(beta) + cumsum split comes from NIID-Bench's
+  `iid-diff-quantity` partition. This replicates the source paper's
+  quantity-only condition; it is not a thesis contribution, and B5 imports it
+  rather than copying it.
 
 Each adapted function carries a header with source, version, licence and
 changes.
@@ -183,9 +226,9 @@ by the author. Modules produced this way say so in their docstring.
 
 The thesis's own contributions are the author's own design: the HD-to-global
 label and quantity metrics (`partitioning/metrics.py`), the
-`natural_per_client` construction, the alpha -> label-HD calibration
-(`partitioning/calibration.py`), and (future) the B4 pure-label and B5 nested
-partitioning methods.
+`natural_per_client` construction, the alpha -> label-HD and beta ->
+quantity-HD calibration (`partitioning/calibration.py`), and (future) the B4
+pure-label and B5 nested partitioning methods.
 
 ## Progress log
 
@@ -221,5 +264,16 @@ partitioning methods.
     infeasible
   - Calibration curves for CIFAR-10, K=30: label-HD reaches ~0.76
     (per-class), ~0.77 (capped) and ~0.81 (per-client)
-- Next: B6 target label-HD levels from the curves; capped vs uncapped for the
-  RQ2 natural arm
+- B3 quantity-skew partitioning (`quantity_only`) complete
+  - Matches FedArtML's minsize-dirichlet byte-for-byte on a shared RNG stream;
+    on real CIFAR-10 (K=30, 10 seeds, 6 betas) the two agree in distribution
+    (all |z| < 1.6)
+  - CIFAR-10, K=30: quantity-HD reaches 0.83 (analytic ceiling 0.830 at the
+    realized floor of 30); FedArtML's pairwise scale reaches 0.176 of a
+    possible 0.183
+  - Sampling is label-blind, but label-HD rises from 0.025 (equal split) to
+    ~0.21 at small beta, because many floored ~30-sample clients carry large
+    sampling noise in an unweighted mean
+  - Beta calibration curve committed; B3 grid of 270 partitions generated
+- Next: B6 target levels from the curves; capped vs uncapped for the RQ2
+  natural arm
