@@ -1,6 +1,8 @@
-"""Tests for `natural_per_class`, including the FedArtML-faithful size cap."""
+"""Tests for `natural_per_class`, including the FedArtML-faithful size cap.
 
-import types
+`shimmed_fedartml` (conftest.py) routes FedArtML's np.random to a Generator:
+FedArtML draws shuffle-then-dirichlet per class, as we do.
+"""
 
 import numpy as np
 import pytest
@@ -13,42 +15,21 @@ from partitioning.dirichlet import natural_per_class
 LABELS = np.repeat(np.arange(10), 600)  # N = 6000, balanced
 
 
-def shimmed_fedartml(monkeypatch, rng):
-    """FedArtML's module with np.random routed to `rng`, seed() a no-op.
-
-    FedArtML draws shuffle-then-dirichlet per class, as we do, so on a shared
-    stream both implementations see the same numbers and must agree exactly.
-    """
-    module = pytest.importorskip("fedartml.fl_split_as_federated_data")
-    fake_random = types.SimpleNamespace(
-        seed=lambda *_: None, shuffle=rng.shuffle, dirichlet=rng.dirichlet
-    )
-
-    class NumpyShim:
-        random = fake_random
-
-        def __getattr__(self, name):
-            return getattr(np, name)
-
-    monkeypatch.setattr(module, "np", NumpyShim())
-    return module.SplitAsFederatedData
-
-
 @pytest.mark.parametrize("alpha", [0.1, 0.5, 5.0])
-def test_niid_bench_cap_replicates_fedartml_exactly(monkeypatch, alpha):
+def test_niid_bench_cap_replicates_fedartml_exactly(shimmed_fedartml, alpha):
     ours = natural_per_class(
         LABELS, 20, alpha, np.random.default_rng(7), min_size=10, size_cap="niid_bench"
     )
-    splitter = shimmed_fedartml(monkeypatch, np.random.default_rng(7))
+    splitter = shimmed_fedartml(np.random.default_rng(7))
     _, _, theirs, _ = splitter.dirichlet_method(LABELS, 20, alpha=alpha, random_state=0)
     assert all(np.array_equal(a, np.sort(b)) for a, b in zip(ours, theirs))
 
 
-def test_uncapped_differs_from_fedartml(monkeypatch):
+def test_uncapped_differs_from_fedartml(shimmed_fedartml):
     ours = natural_per_class(
         LABELS, 20, 0.1, np.random.default_rng(7), min_size=10, size_cap="none"
     )
-    splitter = shimmed_fedartml(monkeypatch, np.random.default_rng(7))
+    splitter = shimmed_fedartml(np.random.default_rng(7))
     _, _, theirs, _ = splitter.dirichlet_method(LABELS, 20, alpha=0.1, random_state=0)
     assert not all(np.array_equal(a, np.sort(b)) for a, b in zip(ours, theirs))
 
