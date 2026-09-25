@@ -1,23 +1,32 @@
-"""alpha -> realized label-HD calibration curves (B2 phase 4, input to B6).
+"""Calibration curves: alpha -> realized label-HD (B2) and beta -> quantity-HD (B3).
 
     python -m partitioning.calibration --dataset cifar10 --K 30 \\
         --mode natural_per_class --size-cap none
+    python -m partitioning.calibration --dataset cifar10 --K 30 --mode quantity_only
 
-For one (dataset, K, mode, size_cap, min_size_policy) this partitions at a
-dense log-spaced alpha grid (30 values in [0.01, 1000]) x 3 trials, records
-mean realized label-HD (and quantity-HD) per alpha, and writes
-calibration/{calibration_id}.json with the curve, the seeds and the git commit.
+Label-skew modes: for one (dataset, K, mode, size_cap, min_size_policy) this
+partitions at a dense log-spaced alpha grid (30 values in [0.01, 1000]) x 3
+trials and fits realized label-HD. quantity_only: for one (dataset, K,
+quantity_floor) it partitions at 30 log-spaced beta values in [0.001, 1000]
+x 3 trials and fits realized quantity-HD. Either way the file records mean
+label-HD and quantity-HD per point, the seeds and the git commit, and is
+written to calibration/{calibration_id}.json.
+
+A curve is indexed by `parameter` ("alpha" or "beta") and fitted on
+`fitted_metric` ("label_hd" or "quantity_hd"). Files written before B3 have
+neither key and are alpha / label-HD curves; their format and IDs are
+unchanged, and beta curves hash a different payload.
 
 The trial seeds are the grid's own (`derive_seeds(trial).partition`), so a
-calibration point and the RQ1 partition at the same (alpha, K, trial) are the
-same partition. The same seeds at every alpha (common random numbers) keep the
-curve smooth.
+calibration point and the grid partition at the same (parameter, K, trial) are
+the same partition. The same seeds at every point (common random numbers) keep
+the curve smooth.
 
-Inverse: `alpha_for_target` interpolates log(alpha) on a monotone
-(non-increasing, pool-adjacent-violators) fit of the mean curve; pass `labels`
-to refine by bisection on log(alpha) against fresh partitions. Alphas where any
-trial exhausted its redraw budget are kept in the file but left out of the fit.
-Target HD levels are not chosen here.
+Inverse: `alpha_for_target` / `beta_for_target` interpolate log(parameter) on
+a monotone (non-increasing, pool-adjacent-violators) fit of the mean curve;
+pass `labels` to refine by bisection against fresh partitions. Points where
+any trial exhausted its redraw budget are kept in the file but left out of the
+fit. Target HD levels are not chosen here.
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
@@ -35,56 +44,92 @@ from experiments.recording import atomic_write_text, git_provenance, utc_stamp
 from experiments.seeding import derive_seeds
 from partitioning.dirichlet import MinSizeInfeasible, natural_per_class, natural_per_client
 from partitioning.metrics import partition_metrics
+from partitioning.quantity import default_quantity_floor, quantity_only
 
 CALIBRATION_DIR = Path("calibration")
 DEFAULT_ALPHAS = tuple(float(a) for a in np.logspace(-2, 3, 30))
+DEFAULT_BETAS = tuple(float(b) for b in np.logspace(-3, 3, 30))
 DEFAULT_TRIALS = (0, 1, 2)
-MODES = ("natural_per_class", "natural_per_client")
+MODES = ("natural_per_class", "natural_per_client", "quantity_only")
+PARAMETER = {"natural_per_class": "alpha", "natural_per_client": "alpha", "quantity_only": "beta"}
+FITTED_METRIC = {"alpha": "label_hd", "beta": "quantity_hd"}
 
 
-def _partition(mode, size_cap, labels, K, alpha, rng, min_size, max_redraws, stats):
+def _mode_parameter(mode: str) -> str:
+    if mode not in PARAMETER:
+        raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
+    return PARAMETER[mode]
+
+
+def _min_size_policy(mode: str, min_size_policy: int | None) -> int:
+    """10 for the label-skew modes (the B2 convention); quantity_only never redraws."""
+    if _mode_parameter(mode) == "beta":
+        if min_size_policy not in (None, 0):
+            raise ValueError("quantity_only never redraws; min_size_policy must be 0")
+        return 0
+    return 10 if min_size_policy is None else min_size_policy
+
+
+def _partition(mode, size_cap, labels, K, value, rng, min_size, max_redraws, stats, floor=None):
     if mode == "natural_per_class":
         return natural_per_class(
             labels,
             K,
-            alpha,
+            value,
             rng,
             min_size=min_size,
             max_redraws=max_redraws,
             size_cap=size_cap,
             stats=stats,
         )
+    if size_cap != "none":
+        raise ValueError("size_cap applies to natural_per_class only")
     if mode == "natural_per_client":
-        if size_cap != "none":
-            raise ValueError("size_cap applies to natural_per_class only")
         return natural_per_client(
-            labels, K, alpha, rng, min_size=min_size, max_redraws=max_redraws, stats=stats
+            labels, K, value, rng, min_size=min_size, max_redraws=max_redraws, stats=stats
         )
+    if mode == "quantity_only":
+        stats["n_redraws"] = 0
+        return quantity_only(labels, K, value, floor, rng, stats=stats)
     raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
 
 
-def calibration_id(dataset, K, mode, size_cap, min_size_policy, max_redraws, alphas, seeds) -> str:
-    payload = json.dumps(
-        [
+def calibration_id(
+    dataset, K, mode, size_cap, min_size_policy, max_redraws, values, seeds, quantity_floor=None
+) -> str:
+    if _mode_parameter(mode) == "beta":
+        payload = ["beta", dataset, K, mode, quantity_floor, [round(b, 12) for b in values]]
+    else:
+        payload = [
             dataset,
             K,
             mode,
             size_cap,
             min_size_policy,
             max_redraws,
-            [round(a, 12) for a in alphas],
-            list(seeds),
-        ],
-        separators=(",", ":"),
-    )
+            [round(a, 12) for a in values],
+        ]
+    payload = json.dumps([*payload, list(seeds)], separators=(",", ":"))
     return hashlib.sha256(payload.encode()).hexdigest()[:10]
 
 
 def evaluate(
-    labels, K, mode, alpha, seeds, size_cap="none", min_size_policy=10, max_redraws=1000
+    labels,
+    K,
+    mode,
+    value,
+    seeds,
+    size_cap="none",
+    min_size_policy=None,
+    max_redraws=1000,
+    quantity_floor=None,
 ) -> dict:
-    """Realized skew at one alpha across the given seeds."""
+    """Realized skew at one alpha (or beta, for quantity_only) across the given seeds."""
+    parameter = _mode_parameter(mode)
+    min_size_policy = _min_size_policy(mode, min_size_policy)
     num_classes = len(np.unique(labels))
+    if parameter == "beta" and quantity_floor is None:
+        quantity_floor = default_quantity_floor(num_classes)
     trials = []
     for seed in seeds:
         stats = {}
@@ -94,30 +139,33 @@ def evaluate(
                 size_cap,
                 labels,
                 K,
-                alpha,
+                value,
                 np.random.default_rng(seed),
                 min_size_policy,
                 max_redraws,
                 stats,
+                quantity_floor,
             )
         except MinSizeInfeasible:
             trials.append({"seed": seed, "feasible": False, "n_redraws": stats["n_redraws"]})
             continue
         m = partition_metrics(labels, parts, num_classes)
-        trials.append(
-            {
-                "seed": seed,
-                "feasible": True,
-                "n_redraws": stats["n_redraws"],
-                "label_hd": m["realized_label_hd"],
-                "quantity_hd": m["realized_quantity_hd"],
-                "n_empty_clients": m["n_empty_clients"],
-            }
-        )
+        trial = {
+            "seed": seed,
+            "feasible": True,
+            "n_redraws": stats["n_redraws"],
+            "label_hd": m["realized_label_hd"],
+            "quantity_hd": m["realized_quantity_hd"],
+            "n_empty_clients": m["n_empty_clients"],
+        }
+        if parameter == "beta":
+            trial["n_floored_clients"] = stats["n_floored_clients"]
+            trial["min_client_size"] = m["min_client_size"]
+        trials.append(trial)
 
     ok = [t for t in trials if t["feasible"]]
     point = {
-        "alpha": float(alpha),
+        parameter: float(value),
         "trials": trials,
         "n_feasible": len(ok),
         "all_feasible": len(ok) == len(trials),
@@ -147,29 +195,42 @@ def compute_curve(
     K: int,
     mode: str,
     size_cap: str = "none",
-    min_size_policy: int = 10,
+    min_size_policy: int | None = None,
     alphas=DEFAULT_ALPHAS,
     trials=DEFAULT_TRIALS,
     max_redraws: int = 1000,
+    betas=DEFAULT_BETAS,
+    quantity_floor: int | None = None,
 ) -> dict:
-    alphas = sorted(float(a) for a in alphas)
+    parameter = _mode_parameter(mode)
+    metric = FITTED_METRIC[parameter]
+    min_size_policy = _min_size_policy(mode, min_size_policy)
+    counts = np.bincount(np.asarray(labels))
+    if parameter == "beta" and quantity_floor is None:
+        quantity_floor = default_quantity_floor(len(counts))
+    values = sorted(float(v) for v in (betas if parameter == "beta" else alphas))
     seeds = [derive_seeds(t).partition for t in trials]
     curve = [
-        evaluate(labels, K, mode, a, seeds, size_cap, min_size_policy, max_redraws) for a in alphas
+        evaluate(labels, K, mode, v, seeds, size_cap, min_size_policy, max_redraws, quantity_floor)
+        for v in values
     ]
 
     fitted = [p for p in curve if p["all_feasible"]]
-    fit = monotone_decreasing([p["mean_label_hd"] for p in fitted]) if fitted else []
+    fit = monotone_decreasing([p[f"mean_{metric}"] for p in fitted]) if fitted else []
     for p in curve:
-        p["monotone_label_hd"] = None
+        p[f"monotone_{metric}"] = None
     for p, value in zip(fitted, fit):
-        p["monotone_label_hd"] = float(value)
+        p[f"monotone_{metric}"] = float(value)
 
-    counts = np.bincount(np.asarray(labels))
+    cid = calibration_id(
+        dataset, K, mode, size_cap, min_size_policy, max_redraws, values, seeds, quantity_floor
+    )
+    head = {"calibration_id": cid}
+    if parameter == "beta":  # alpha files keep their pre-B3 format
+        head |= {"parameter": parameter, "fitted_metric": metric}
+    tail = {"quantity_floor": quantity_floor} if parameter == "beta" else {}
     return {
-        "calibration_id": calibration_id(
-            dataset, K, mode, size_cap, min_size_policy, max_redraws, alphas, seeds
-        ),
+        **head,
         "dataset": dataset,
         "num_classes": int(len(counts)),
         "class_counts": counts.tolist(),
@@ -178,28 +239,81 @@ def compute_curve(
         "size_cap": size_cap,
         "min_size_policy": min_size_policy,
         "max_redraws": max_redraws,
+        **tail,
         "trials": list(trials),
         "seeds": seeds,
-        "alphas": alphas,
-        "label_hd_range": ([float(min(fit)), float(max(fit))] if len(fit) else None),
+        f"{parameter}s": values,
+        f"{metric}_range": ([float(min(fit)), float(max(fit))] if len(fit) else None),
         "curve": curve,
         "generated_at": utc_stamp(),
         **git_provenance(),
     }
 
 
+def curve_parameter(calibration: dict) -> str:
+    """ "alpha" or "beta"; files written before B3 carry no key and are alpha curves."""
+    return calibration.get("parameter", "alpha")
+
+
 def _fit_points(calibration: dict):
-    """(increasing label-HD, matching log alpha) with ties collapsed."""
+    """(increasing fitted HD, matching log parameter) with ties collapsed."""
+    parameter = curve_parameter(calibration)
+    metric = FITTED_METRIC[parameter]
     points = [
-        (p["monotone_label_hd"], np.log(p["alpha"]))
+        (p[f"monotone_{metric}"], np.log(p[parameter]))
         for p in calibration["curve"]
-        if p["monotone_label_hd"] is not None
+        if p[f"monotone_{metric}"] is not None
     ]
     by_hd: dict[float, list[float]] = {}
-    for hd, log_alpha in points:
-        by_hd.setdefault(hd, []).append(log_alpha)
+    for hd, log_value in points:
+        by_hd.setdefault(hd, []).append(log_value)
     hds = sorted(by_hd)
     return np.array(hds), np.array([np.mean(by_hd[h]) for h in hds])
+
+
+def _value_for_target(calibration, parameter, target, labels, tol, max_iter) -> float:
+    if curve_parameter(calibration) != parameter:
+        raise ValueError(
+            f"calibration {calibration['calibration_id']} is indexed by "
+            f"{curve_parameter(calibration)}, not {parameter}"
+        )
+    metric = FITTED_METRIC[parameter]
+    hds, log_values = _fit_points(calibration)
+    if len(hds) < 2 or not hds[0] <= target <= hds[-1]:
+        raise ValueError(
+            f"target {target} outside the calibrated {metric} range "
+            f"{calibration[f'{metric}_range']}"
+        )
+    estimate = float(np.exp(np.interp(target, hds, log_values)))
+    if labels is None:
+        return estimate
+
+    i = int(np.searchsorted(hds, target))
+    lo, hi = log_values[min(i, len(hds) - 1)], log_values[max(i - 1, 0)]  # hd high, low
+    log_value = np.log(estimate)
+    for _ in range(max_iter):
+        point = evaluate(
+            labels,
+            calibration["K"],
+            calibration["mode"],
+            np.exp(log_value),
+            calibration["seeds"],
+            calibration["size_cap"],
+            calibration["min_size_policy"],
+            calibration["max_redraws"],
+            calibration.get("quantity_floor"),
+        )
+        if not point["all_feasible"]:
+            raise ValueError(f"{parameter}={np.exp(log_value):.4g} is min-size infeasible")
+        gap = point[f"mean_{metric}"] - target
+        if abs(gap) <= tol:
+            break
+        if gap > 0:  # too skewed -> larger parameter
+            lo = log_value
+        else:
+            hi = log_value
+        log_value = (lo + hi) / 2
+    return float(np.exp(log_value))
 
 
 def alpha_for_target(
@@ -212,41 +326,23 @@ def alpha_for_target(
     points, re-partitioning with the calibration's own seeds, until the mean
     is within `tol` of the target (or max_iter halvings).
     """
-    hds, log_alphas = _fit_points(calibration)
-    if len(hds) < 2 or not hds[0] <= target_label_hd <= hds[-1]:
-        raise ValueError(
-            f"target {target_label_hd} outside the calibrated label-HD "
-            f"range {calibration['label_hd_range']}"
-        )
-    estimate = float(np.exp(np.interp(target_label_hd, hds, log_alphas)))
-    if labels is None:
-        return estimate
+    return _value_for_target(calibration, "alpha", target_label_hd, labels, tol, max_iter)
 
-    i = int(np.searchsorted(hds, target_label_hd))
-    lo, hi = log_alphas[min(i, len(hds) - 1)], log_alphas[max(i - 1, 0)]  # hd high, low
-    log_alpha = np.log(estimate)
-    for _ in range(max_iter):
-        point = evaluate(
-            labels,
-            calibration["K"],
-            calibration["mode"],
-            np.exp(log_alpha),
-            calibration["seeds"],
-            calibration["size_cap"],
-            calibration["min_size_policy"],
-            calibration["max_redraws"],
-        )
-        if not point["all_feasible"]:
-            raise ValueError(f"alpha={np.exp(log_alpha):.4g} is min-size infeasible")
-        gap = point["mean_label_hd"] - target_label_hd
-        if abs(gap) <= tol:
-            break
-        if gap > 0:  # too skewed -> larger alpha
-            lo = log_alpha
-        else:
-            hi = log_alpha
-        log_alpha = (lo + hi) / 2
-    return float(np.exp(log_alpha))
+
+def beta_for_target(
+    calibration: dict,
+    target_quantity_hd: float,
+    labels=None,
+    tol: float = 0.005,
+    max_iter: int = 30,
+) -> float:
+    """beta whose mean realized quantity-HD (HD to uniform) is `target_quantity_hd`.
+
+    Same method as `alpha_for_target`, on a quantity_only curve. For a target on
+    FedArtML's pairwise scale, convert it first with
+    `partitioning.metrics.quantity_hd_from_pairwise`.
+    """
+    return _value_for_target(calibration, "beta", target_quantity_hd, labels, tol, max_iter)
 
 
 def save_calibration(calibration: dict, directory: str | Path = CALIBRATION_DIR) -> Path:
@@ -271,8 +367,16 @@ def main() -> None:
     parser.add_argument("--K", type=int, default=30)
     parser.add_argument("--mode", choices=MODES, required=True)
     parser.add_argument("--size-cap", default="none", choices=("none", "niid_bench"))
-    parser.add_argument("--min-size", type=int, default=10)
+    parser.add_argument(
+        "--min-size", type=int, default=None, help="default 10; quantity_only takes 0 only"
+    )
     parser.add_argument("--max-redraws", type=int, default=1000)
+    parser.add_argument(
+        "--quantity-floor",
+        type=int,
+        default=None,
+        help="quantity_only floor in samples; default 3 * num_classes + 1",
+    )
     parser.add_argument(
         "--out-dir",
         type=Path,
@@ -290,21 +394,25 @@ def main() -> None:
         args.size_cap,
         args.min_size,
         max_redraws=args.max_redraws,
+        quantity_floor=args.quantity_floor,
     )
     path = save_calibration(cal, args.out_dir)
-    print(f"{'alpha':>10} {'label_hd':>18} {'monotone':>9} {'quantity_hd':>18} redraws")
+    parameter = curve_parameter(cal)
+    metric = FITTED_METRIC[parameter]
+    print(f"{parameter:>10} {'label_hd':>18} {'quantity_hd':>18} {'monotone':>9} redraws/floored")
     for p in cal["curve"]:
-        redraws = [t["n_redraws"] for t in p["trials"]]
+        extra = [t.get("n_floored_clients", t["n_redraws"]) for t in p["trials"]]
         if not p["n_feasible"]:
-            print(f"{p['alpha']:>10.4g} {'infeasible':>18} {'':>9} {'':>18} {redraws}")
+            print(f"{p[parameter]:>10.4g} {'infeasible':>18} {'':>18} {'':>9} {extra}")
             continue
         sd = lambda k: f"{p[k]:.4f}" if p[k] is not None else "-"
-        mono = f"{p['monotone_label_hd']:.4f}" if p["monotone_label_hd"] is not None else "-"
+        mono = p[f"monotone_{metric}"]
+        mono = f"{mono:.4f}" if mono is not None else "-"
         print(
-            f"{p['alpha']:>10.4g} {p['mean_label_hd']:>9.4f} +/- {sd('sd_label_hd'):>6} "
-            f"{mono:>9} {p['mean_quantity_hd']:>9.4f} +/- {sd('sd_quantity_hd'):>6} {redraws}"
+            f"{p[parameter]:>10.4g} {p['mean_label_hd']:>9.4f} +/- {sd('sd_label_hd'):>6} "
+            f"{p['mean_quantity_hd']:>9.4f} +/- {sd('sd_quantity_hd'):>6} {mono:>9} {extra}"
         )
-    print(f"label-HD range {cal['label_hd_range']}  -> {path}")
+    print(f"{metric} range {cal[f'{metric}_range']}  -> {path}")
 
 
 if __name__ == "__main__":
