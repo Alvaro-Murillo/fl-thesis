@@ -31,6 +31,7 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - dirichlet.py - the two natural label-skew modes, `natural_per_class` and
     `natural_per_client`
   - quantity.py - `quantity_only`, MinSize-Dirichlet quantity skew (adapted code)
+  - allocations.py - `pure_label`, label skew with equal client sizes
   - calibration.py - alpha -> label-HD and beta -> quantity-HD curves and their
     inverses
 - models/ - CNN and DNN architectures
@@ -42,8 +43,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - datasets.py - dataset label registry (currently `cifar10`)
   - run_partition.py - generate and record one partition
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
-- config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, grids/ (one per
-  research question, plus quantity_skew.yaml)
+- config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
+  grids/ (one per research question, plus quantity_skew.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -75,6 +76,7 @@ Build an alpha -> label-HD calibration curve (writes `calibration/{id}.json`):
     python -m partitioning.calibration --K 30 --mode natural_per_class --size-cap none
     python -m partitioning.calibration --K 30 --mode natural_per_class --size-cap niid_bench
     python -m partitioning.calibration --K 30 --mode natural_per_client
+    python -m partitioning.calibration --K 30 --mode pure_label
 
 Build the beta -> quantity-HD curve for quantity_only:
 
@@ -129,7 +131,24 @@ relaxed or looped past: the cell is recorded as `infeasible_min_size`.
   - `partitioning.quantity.draw_client_sizes` is the size draw on its own, for
     the nested `combined` partitioner to import (not copy).
 
-`pure_label` and `combined` are not implemented yet.
+- `pure_label` - label skew with no quantity skew. Every client holds N // K
+  samples, or one more for N % K clients drawn at random. Each client draws a
+  label mix p_k ~ Dir(alpha * C * Q_global), where Q_global is the empirical
+  label distribution, so demand matches stock in expectation; on balanced data
+  this is Dir(alpha * 1_C). Within one draw demand and stock never match
+  exactly, so the requested counts b_k * p_k are scaled to the budgets and
+  the class stock: the Sinkhorn / iterative proportional fitting scaling,
+  i.e. the closest matrix in KL divergence. Every cell is then rounded down or
+  up with both margins exact, so the correction is spread over all clients.
+  The scaling is solved by Newton's method on its dual, because the
+  alternating Sinkhorn updates stall at alpha <= 0.01.
+  - Never redraws: `min_size_policy` must be 0 and `max_redraws` stay at its
+    default. Rows record `n_redraws` 0.
+  - The drawn mix and the realized mix still differ, and most of all at small
+    alpha (CIFAR-10, K = 30: mean Hellinger drift 0.17 at alpha = 0.1, 0.06 at
+    alpha = 1). Only realized metrics are recorded.
+
+`combined` is not implemented yet.
 
 ## Grid files
 
@@ -223,12 +242,14 @@ changes.
 AI assistance: parts of this code base were written with Claude Code
 (Anthropic) from specifications written by the author, and reviewed and tested
 by the author. Modules produced this way say so in their docstring.
+`partitioning/allocations.py` was written by the author; its docstring lists
+the changes made to it with Claude Code.
 
 The thesis's own contributions are the author's own design: the HD-to-global
 label and quantity metrics (`partitioning/metrics.py`), the
-`natural_per_client` construction, the alpha -> label-HD and beta ->
-quantity-HD calibration (`partitioning/calibration.py`), and (future) the
-pure-label and two-stage nested partitioning methods.
+`natural_per_client` and `pure_label` constructions, the alpha -> label-HD and
+beta -> quantity-HD calibration (`partitioning/calibration.py`), and (future)
+the two-stage nested partitioning method.
 
 ## Progress log
 
@@ -276,5 +297,13 @@ pure-label and two-stage nested partitioning methods.
     sampling noise in an unweighted mean
   - Beta calibration curve committed; quantity-skew grid of 270 partitions
     generated
+- Quantity-corrected label skew (`pure_label`) complete: 218 tests pass (with
+  --runslow)
+  - Equal client sizes (quantity-HD <= 1e-4 on CIFAR-10 at K = 10, 30, 100)
+  - Counts come from the KL-closest matrix with the budgets and class stock as
+    margins, rounded with both margins exact. The earlier client-by-client fill
+    left the whole mismatch to the last clients (CIFAR-10, K = 10, alpha = 1:
+    max drift 0.76; now 0.16)
+  - CIFAR-10, K = 10, alpha = 1: label-HD 0.30, vs 0.29 for natural_per_class
 - Next: target levels from the curves; capped vs uncapped for the RQ2
   natural arm

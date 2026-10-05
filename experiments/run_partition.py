@@ -11,7 +11,9 @@ recorded as an explicitly infeasible row - status `infeasible_min_size`, no
 .npz, no metrics - rather than looping on or relaxing the minimum.
 
 quantity_only never redraws: its rows carry the resolved `quantity_floor` and
-`n_floored_clients` (null for the other modes) and `n_redraws` 0.
+`n_floored_clients` (null for the other modes) and `n_redraws` 0. pure_label
+never redraws either (`n_redraws` 0): every client holds N // K or N // K + 1
+samples.
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
@@ -33,6 +35,7 @@ from experiments.recording import (
     utc_stamp,
 )
 from experiments.seeding import generator, seeds_for
+from partitioning.allocations import pure_label
 from partitioning.dirichlet import MinSizeInfeasible, natural_per_class, natural_per_client
 from partitioning.metrics import partition_metrics
 from partitioning.quantity import default_quantity_floor, quantity_only
@@ -57,6 +60,12 @@ def build_partition(config, rng, labels=None, stats: dict | None = None):
         labels = load_labels(config.dataset) if labels is None else labels
         floor = resolved_quantity_floor(config)
         client_indices = quantity_only(labels, p.K, p.beta, floor, rng, stats=stats)
+        if stats is not None:
+            stats["n_redraws"] = 0
+        return labels, client_indices
+    if p.mode is PartitionMode.PURE_LABEL:
+        labels = load_labels(config.dataset) if labels is None else labels
+        client_indices = pure_label(labels, p.K, p.alpha, rng, stats=stats)
         if stats is not None:
             stats["n_redraws"] = 0
         return labels, client_indices

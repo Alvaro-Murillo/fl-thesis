@@ -2,6 +2,7 @@
 
     python -m partitioning.calibration --dataset cifar10 --K 30 \\
         --mode natural_per_class --size-cap none
+    python -m partitioning.calibration --dataset cifar10 --K 30 --mode pure_label
     python -m partitioning.calibration --dataset cifar10 --K 30 --mode quantity_only
 
 Label-skew modes: for one (dataset, K, mode, size_cap, min_size_policy) this
@@ -42,6 +43,7 @@ import numpy as np
 
 from experiments.recording import atomic_write_text, git_provenance, utc_stamp
 from experiments.seeding import derive_seeds
+from partitioning.allocations import pure_label
 from partitioning.dirichlet import MinSizeInfeasible, natural_per_class, natural_per_client
 from partitioning.metrics import partition_metrics
 from partitioning.quantity import default_quantity_floor, quantity_only
@@ -50,8 +52,14 @@ CALIBRATION_DIR = Path("calibration")
 DEFAULT_ALPHAS = tuple(float(a) for a in np.logspace(-2, 3, 30))
 DEFAULT_BETAS = tuple(float(b) for b in np.logspace(-3, 3, 30))
 DEFAULT_TRIALS = (0, 1, 2)
-MODES = ("natural_per_class", "natural_per_client", "quantity_only")
-PARAMETER = {"natural_per_class": "alpha", "natural_per_client": "alpha", "quantity_only": "beta"}
+MODES = ("natural_per_class", "natural_per_client", "pure_label", "quantity_only")
+PARAMETER = {
+    "natural_per_class": "alpha",
+    "natural_per_client": "alpha",
+    "pure_label": "alpha",
+    "quantity_only": "beta",
+}
+NEVER_REDRAW = ("pure_label", "quantity_only")
 FITTED_METRIC = {"alpha": "label_hd", "beta": "quantity_hd"}
 
 
@@ -62,10 +70,11 @@ def _mode_parameter(mode: str) -> str:
 
 
 def _min_size_policy(mode: str, min_size_policy: int | None) -> int:
-    """10 for the label-skew modes (FedArtML's value); quantity_only never redraws."""
-    if _mode_parameter(mode) == "beta":
+    """10 for the natural modes (FedArtML's value); pure_label and quantity_only never redraw."""
+    _mode_parameter(mode)
+    if mode in NEVER_REDRAW:
         if min_size_policy not in (None, 0):
-            raise ValueError("quantity_only never redraws; min_size_policy must be 0")
+            raise ValueError(f"{mode} never redraws; min_size_policy must be 0")
         return 0
     return 10 if min_size_policy is None else min_size_policy
 
@@ -88,6 +97,9 @@ def _partition(mode, size_cap, labels, K, value, rng, min_size, max_redraws, sta
         return natural_per_client(
             labels, K, value, rng, min_size=min_size, max_redraws=max_redraws, stats=stats
         )
+    if mode == "pure_label":
+        stats["n_redraws"] = 0
+        return pure_label(labels, K, value, rng, stats=stats)
     if mode == "quantity_only":
         stats["n_redraws"] = 0
         return quantity_only(labels, K, value, floor, rng, stats=stats)
@@ -368,7 +380,10 @@ def main() -> None:
     parser.add_argument("--mode", choices=MODES, required=True)
     parser.add_argument("--size-cap", default="none", choices=("none", "niid_bench"))
     parser.add_argument(
-        "--min-size", type=int, default=None, help="default 10; quantity_only takes 0 only"
+        "--min-size",
+        type=int,
+        default=None,
+        help="default 10; pure_label and quantity_only take 0 only",
     )
     parser.add_argument("--max-redraws", type=int, default=1000)
     parser.add_argument(

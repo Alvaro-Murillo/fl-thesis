@@ -28,7 +28,7 @@ DEFAULT_MAX_REDRAWS = 1000
 class PartitionMode(str, Enum):
     NATURAL_PER_CLASS = "natural_per_class"  # FedArtML per-class Dirichlet draw
     NATURAL_PER_CLIENT = "natural_per_client"  # per-client draw, from scratch
-    PURE_LABEL = "pure_label"  # label skew, quantity-corrected (not implemented yet)
+    PURE_LABEL = "pure_label"  # label skew, quantity-corrected (equal client sizes)
     QUANTITY_ONLY = "quantity_only"  # MinSize-Dirichlet quantity skew
     COMBINED = "combined"  # two-stage nested label + quantity (not implemented yet)
 
@@ -83,6 +83,16 @@ class PartitionConfig:
             if self.max_redraws != DEFAULT_MAX_REDRAWS:
                 raise ValueError(
                     f"quantity_only never redraws; leave max_redraws at {DEFAULT_MAX_REDRAWS}"
+                )
+        if self.mode is PartitionMode.PURE_LABEL:
+            if self.min_size_policy != 0:
+                raise ValueError(
+                    "pure_label never redraws; every client holds N // K or N // K + 1 samples. "
+                    f"Set min_size_policy to 0, got {self.min_size_policy}"
+                )
+            if self.max_redraws != DEFAULT_MAX_REDRAWS:
+                raise ValueError(
+                    f"pure_label never redraws; leave max_redraws at {DEFAULT_MAX_REDRAWS}"
                 )
         if self.K < 2:
             raise ValueError(f"K must be >= 2, got {self.K}")

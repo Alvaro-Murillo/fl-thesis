@@ -1,0 +1,37 @@
+# Smoke config for pure_label: the smallest cell that exercises the
+# quantity-corrected label skew end to end. Not used by any reported experiment.
+#
+#   python -m experiments.run_partition --config config/smoke_pure_label.yaml
+#
+# min_size_policy must be 0: this mode never redraws (every client holds
+# N // K or N // K + 1 samples).
+
+dataset:
+  name: cifar10
+  num_classes: 10
+  root: data
+  val_split: 0.0
+
+partition:
+  mode: pure_label
+  K: 10
+  alpha: 0.5
+  min_size_policy: 0
+
+model:
+  arch: cnn
+  in_channels: 3
+  num_classes: 10
+
+federated:
+  algorithm: fedavg
+  rounds: 3
+  local_epochs: 1
+  batch_size: 64
+  lr: 0.001
+
+runtime:
+  trial: 0
+  deterministic: true
+  device: cuda
+  out_dir: results
