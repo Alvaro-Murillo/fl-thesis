@@ -46,7 +46,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
   - quantity_levels.py - the 20-seed feasibility check of a grid's quantity levels
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
-  smoke_combined.yaml, grids/ (one per research question, plus quantity_skew.yaml)
+  smoke_combined.yaml, grids/ (one per research question, quantity_skew.yaml, and the
+  candidate-level grids rq2_candidates.yaml and rq3_candidates.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -55,6 +56,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - fedartml_comparison_quantity_skew.py - the same check for `quantity_only`
   - quantity_skew_measurements.py - quantity-HD range, beta for target levels, seed
     spread, floor behaviour and incidental label-HD
+  - partition_validation.py - nominal vs measured HD for every target cell of a
+    grid, per-client label histograms, and the feasibility map
 
 ## Usage
 
@@ -90,6 +93,15 @@ Compare against FedArtML on shared seeds (no training), and measure quantity ske
     python -m analysis.fedartml_comparison_quantity_skew
     python -m experiments.run_grid --grid config/grids/quantity_skew.yaml
     python -m analysis.quantity_skew_measurements
+
+Validate target levels before any training (partition-only; about a minute of CPU).
+`analysis.partition_validation` defaults to the two candidate grids; `--grid`
+(repeatable) points it at any grid that sets HD targets:
+
+    python -m experiments.run_grid --grid config/grids/rq2_candidates.yaml
+    python -m experiments.run_grid --grid config/grids/rq3_candidates.yaml
+    python -m experiments.quantity_levels --grid config/grids/rq3_candidates.yaml
+    python -m analysis.partition_validation
 
 Check the environment and estimate the compute budget:
 
@@ -216,6 +228,22 @@ pure_label curve and beta off the quantity_only curve. Its sizes come from the
 same draw, and its label-HD stayed within 0.03 of pure_label's at the same
 alpha across the quantity range.
 
+The candidate-level grids hold every level the RQ2 and RQ3 grids might use, so
+levels are chosen from measured feasibility rather than assumed. Both are
+CIFAR-10, K = 30, trials 0-2 (the trained trials, so a chosen level trains on
+the very partitions that were validated):
+
+- `rq2_candidates.yaml` - label targets 0, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6,
+  0.7, 0.75 for natural_per_class uncapped, natural_per_class niid_bench and
+  pure_label, each arm on its own alpha curve (90 partitions).
+- `rq3_candidates.yaml` - combined at those label targets x quantity targets
+  0-0.8 in steps of 0.1 (270 partitions).
+
+`analysis.partition_validation` applies the rules above: a cell is feasible if
+every one of its partitions is within 0.05 of its label target and its
+quantity level, if it has one, passes the 20-seed check. It reports and
+excludes nothing.
+
 ## Results layout
 
 Everything lands under `results/` (gitignored), written atomically:
@@ -234,6 +262,11 @@ Everything lands under `results/` (gitignored), written atomically:
   after the schema moves on
 - `analysis/` - analysis-script outputs, e.g. `fedartml_comparison_label_skew.csv`,
   `fedartml_comparison_quantity_skew.csv`, and `quantity_skew_*` tables and scatter
+- `analysis/partition_validation_*` - `partitions.csv` (one row per partition
+  and target pair), `clients.csv` (one row per client: size, class counts, HD to
+  global, drift), `cells.csv` (one row per target cell with its verdict), and
+  the figures `label.png` and `quantity.png` (nominal vs measured per axis) and
+  `feasibility.png` (deviation from target per cell, failing cells crossed)
 
 Partitions are addressed by the fields that determine the split, so training
 knobs never invalidate a cached partition, and FedAvg and FedProx at the same
@@ -372,5 +405,16 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     left the whole mismatch to the last clients (CIFAR-10, K = 10, alpha = 1:
     max drift 0.76; now 0.16)
   - CIFAR-10, K = 10, alpha = 1: label-HD 0.30, vs 0.29 for natural_per_class
-- Next: target levels from the curves; capped vs uncapped for the RQ2
-  natural arm
+- Partition validation over the candidate levels (CIFAR-10, K = 30, trials 0-2):
+  116 of 120 target cells feasible
+  - Every label-axis arm hits every label target from 0 to 0.75 in every trial
+    (largest miss 0.020; largest mean miss 0.013). At matched realized label-HD
+    the natural arms carry incidental quantity-HD up to 0.39 (uncapped) and 0.32
+    (capped); pure_label carries 0.0001
+  - Every combined quantity level 0-0.8 passes its 20-seed check
+  - combined's label-HD rises with quantity skew: by about +0.015 at quantity
+    level 0.6 and +0.03 to +0.04 at 0.8 (20-seed means). The 4 failing cells,
+    label target 0.25 at quantity 0.8 and 0.3 at 0.6-0.8, are that rise on top of
+    trials 0-2 sitting about 0.015 above the 20-seed mean
+- Next: RQ2 and RQ3 levels chosen from the validation tables; capped vs
+  uncapped for the RQ2 natural arm
