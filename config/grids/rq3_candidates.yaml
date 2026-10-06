@@ -1,0 +1,34 @@
+# RQ3 candidate levels: every (label-HD, quantity-HD) target pair the RQ3 grid
+# might use, checked before any level is chosen. Partition-only: no training.
+#
+#   python -m experiments.run_grid --grid config/grids/rq3_candidates.yaml
+#   python -m experiments.quantity_levels --grid config/grids/rq3_candidates.yaml
+#   python -m analysis.partition_validation
+#
+# Same construction as rq3.yaml: all combined, alpha read off the pure_label
+# curve (da8b82c519) and beta off the 20-trial quantity_only curve
+# (8f995f9546). Target 0 means no skew on that axis (concentration 1e6). The
+# curves reach label-HD 0.791 and quantity-HD 0.826.
+#
+# The label tolerance is per partition, at trials 0-2, the ones training uses.
+# A quantity target is a level name: the tolerance applies to its 20-seed mean
+# (experiments.quantity_levels), not to these three trials. Cells with the same
+# quantity target and trial share one size draw.
+#
+# 10 label x 9 quantity targets x 3 trials = 270 partitions.
+
+base: config/base.yaml
+
+constant:
+  partition.mode: combined
+  partition.K: 30
+  partition.alpha: null
+  partition.beta: null
+  partition.min_size_policy: 0
+  partition.calibration_id: da8b82c519
+  partition.quantity_calibration_id: 8f995f9546
+
+sweep:
+  partition.target_label_hd: [0.0, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75]
+  partition.target_quantity_hd: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+  runtime.trial: [0, 1, 2]

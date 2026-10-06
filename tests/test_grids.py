@@ -76,6 +76,56 @@ def test_quantity_skew_grid_expands_to_quantity_only_cells():
     assert {c.partition.K for c in configs} == {10, 30, 100}
 
 
+CANDIDATE_LABEL_TARGETS = [0.0, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75]
+
+
+def test_rq2_candidates_resolve_each_arm_on_its_own_curve():
+    from partitioning.calibration import NO_SKEW, alpha_for_target, load_calibration
+
+    configs = expand(f"{GRIDS}/rq2_candidates.yaml")
+    assert len(configs) == 3 * 10 * 3 and len({pid(c) for c in configs}) == 90
+    curves = {
+        (PartitionMode.NATURAL_PER_CLASS, "none"): "96fb06debf",
+        (PartitionMode.NATURAL_PER_CLASS, "niid_bench"): "d85a67a9c5",
+        (PartitionMode.PURE_LABEL, "none"): "da8b82c519",
+    }
+    for c in configs:
+        p = c.partition
+        assert p.K == 30 and p.target_quantity_hd is None and p.beta is None
+        assert p.calibration_id == curves[(p.mode, p.size_cap)]
+        assert p.min_size_policy == (0 if p.mode is PartitionMode.PURE_LABEL else 10)
+        expected = (
+            NO_SKEW
+            if p.target_label_hd == 0
+            else alpha_for_target(load_calibration(p.calibration_id), p.target_label_hd)
+        )
+        assert p.alpha == expected
+    assert sorted({c.partition.target_label_hd for c in configs}) == CANDIDATE_LABEL_TARGETS
+    assert {c.runtime.trial for c in configs} == {0, 1, 2}
+
+
+def test_rq3_candidates_are_combined_with_shared_draws_per_axis():
+    configs = expand(f"{GRIDS}/rq3_candidates.yaml")
+    assert len(configs) == 10 * 9 * 3 and len({pid(c) for c in configs}) == 270
+    assert all(c.partition.mode is PartitionMode.COMBINED for c in configs)
+    assert all(c.partition.min_size_policy == 0 and c.partition.K == 30 for c in configs)
+    alphas, betas = {}, {}
+    for c in configs:
+        p = c.partition
+        alphas.setdefault(p.target_label_hd, set()).add(p.alpha)
+        betas.setdefault(p.target_quantity_hd, set()).add(p.beta)
+    assert all(len(v) == 1 for v in (*alphas.values(), *betas.values()))
+    assert sorted(alphas) == CANDIDATE_LABEL_TARGETS
+    assert sorted(betas) == [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+    # Same curve, same alpha as the pure arm: a label level means the same thing in RQ2 and RQ3.
+    pure = {
+        c.partition.target_label_hd: c.partition.alpha
+        for c in expand(f"{GRIDS}/rq2_candidates.yaml")
+        if c.partition.mode is PartitionMode.PURE_LABEL
+    }
+    assert {t: a.pop() for t, a in alphas.items()} == pure
+
+
 @pytest.mark.parametrize("name", ["rq2.yaml", "rq3.yaml"])
 def test_blocked_grids_declare_themselves(name):
     """A stub must be refusable by the driver, not silently sweepable."""
