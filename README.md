@@ -247,6 +247,11 @@ commit. Label-skew curves are indexed by alpha and fitted on label-HD
 fitted on quantity-HD (`beta_for_target`). Files without a `parameter` key
 are alpha curves.
 
+`da8b82c519` is the CIFAR-10 K = 30 pure_label alpha curve (3 trials).
+combined's label targets resolve against it too. It is within 0.009 of a
+20-trial curve, because label-HD varies far less across trials than
+quantity-HD (sd at most 0.014).
+
 The CIFAR-10 K = 30 beta curve exists twice: `f09e0cfdf0` (3 trials, the
 grid's own, used by `analysis/quantity_skew_measurements.py`) and `8f995f9546`
 (20 trials, `--trials 20`), which grids resolve quantity targets against.

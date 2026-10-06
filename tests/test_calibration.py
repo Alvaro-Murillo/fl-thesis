@@ -116,7 +116,7 @@ def test_infeasible_alphas_are_kept_but_not_fitted():
     assert large["all_feasible"] and large["monotone_label_hd"] is not None
 
 
-COMMITTED_ALPHA_CURVES = ("96fb06debf", "d85a67a9c5", "34b3a4dc67")
+COMMITTED_ALPHA_CURVES = ("96fb06debf", "d85a67a9c5", "34b3a4dc67", "da8b82c519")
 
 
 @pytest.mark.parametrize("cid", COMMITTED_ALPHA_CURVES)

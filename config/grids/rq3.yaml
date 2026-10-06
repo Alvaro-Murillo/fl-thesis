@@ -1,4 +1,4 @@
-# RQ3 - STUB. Blocked on the target levels and a pure_label alpha curve.
+# RQ3 - STUB. Blocked on the target levels and FedProx mu.
 #
 # The additivity test compares delta_combined against
 # delta_label-only + delta_quantity-only at matched levels. Every cell is
@@ -14,8 +14,10 @@
 # Targets resolve to alpha / beta when the grid is expanded
 # (partitioning.calibration.resolve_targets). 0 means no skew on that axis
 # (concentration 1e6); any other target is read off the pure_label alpha curve
-# and the 20-trial quantity_only beta curve. That curve is within 0.004 of a
-# 1000-seed mean for targets 0.1-0.6 (0.021 at 0.7).
+# (da8b82c519, 3 trials; within 0.009 of a 20-trial curve) and the 20-trial
+# quantity_only beta curve (8f995f9546; within 0.004 of a 1000-seed mean for
+# targets 0.1-0.6, 0.021 at 0.7). Label-HD ranges 0.010-0.791, quantity-HD
+# 0.011-0.826.
 #
 # Quantity targets are level names: every size draw is kept, the analysis uses
 # each row's realized quantity-HD, and a level is feasible if its mean over 20
@@ -29,13 +31,10 @@
 # Still needed:
 #   - the label-HD and quantity-HD levels (3 each, the first 0), chosen from the
 #     calibrated ranges;
-#   - the pure_label alpha curve for CIFAR-10 at K = 30, generated from a clean
-#     tree and committed:
-#       python -m partitioning.calibration --dataset cifar10 --K 30 --mode pure_label
 #   - mu for FedProx.
 
 status: blocked
-blocked_on: label-HD and quantity-HD levels; pure_label alpha curve (CIFAR-10, K = 30); FedProx mu
+blocked_on: label-HD and quantity-HD levels; FedProx mu
 
 base: config/base.yaml
 
@@ -47,7 +46,7 @@ base: config/base.yaml
 #   partition.alpha: null                 # resolved from target_label_hd
 #   partition.beta: null                  # resolved from target_quantity_hd
 #   partition.min_size_policy: 0
-#   partition.calibration_id: <pure_label alpha curve, CIFAR-10, K = 30>
+#   partition.calibration_id: da8b82c519           # pure_label alpha curve, K = 30
 #   partition.quantity_calibration_id: 8f995f9546   # quantity_only beta curve, K = 30, 20 trials
 #
 # cases:
