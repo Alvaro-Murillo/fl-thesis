@@ -30,7 +30,17 @@ class PartitionMode(str, Enum):
     NATURAL_PER_CLIENT = "natural_per_client"  # per-client draw, from scratch
     PURE_LABEL = "pure_label"  # label skew, quantity-corrected (equal client sizes)
     QUANTITY_ONLY = "quantity_only"  # MinSize-Dirichlet quantity skew
-    COMBINED = "combined"  # two-stage nested label + quantity (not implemented yet)
+    COMBINED = "combined"  # two-stage nested: quantity_only sizes, then label skew within them
+
+
+# Modes that never redraw, and what fixes their client sizes instead.
+NO_REDRAW = {
+    PartitionMode.QUANTITY_ONLY: "its only size mechanism is quantity_floor",
+    PartitionMode.PURE_LABEL: "every client holds N // K or N // K + 1 samples",
+    PartitionMode.COMBINED: "its client sizes come from the quantity draw and quantity_floor",
+}
+# Modes whose client sizes come from partitioning.quantity.draw_client_sizes.
+FLOORED_MODES = (PartitionMode.QUANTITY_ONLY, PartitionMode.COMBINED)
 
 
 @dataclass(frozen=True)
@@ -54,10 +64,11 @@ class PartitionConfig:
     target_label_hd: float | None = None
     target_quantity_hd: float | None = None
     min_size_policy: int = 0  # min samples per client; redraw below it, 0 = off
-    calibration_id: str | None = None  # calibration/{id}.json that resolved target HD -> alpha
+    calibration_id: str | None = None  # calibration/{id}.json: target_label_hd -> alpha
     size_cap: str = "none"  # "niid_bench" = FedArtML's N/K balancing term
     max_redraws: int = DEFAULT_MAX_REDRAWS  # min-size redraw budget; exhausted = infeasible row
-    quantity_floor: int | None = None  # quantity_only floor in samples; None = 3 * num_classes + 1
+    quantity_floor: int | None = None  # size floor in samples; None = 3 * num_classes + 1
+    quantity_calibration_id: str | None = None  # calibration/{id}.json: target_quantity_hd -> beta
 
     def __post_init__(self):
         if self.size_cap not in SIZE_CAPS:
@@ -67,32 +78,28 @@ class PartitionConfig:
         if self.max_redraws < 1:
             raise ValueError(f"max_redraws must be >= 1, got {self.max_redraws}")
         if self.quantity_floor is not None:
-            if self.mode is not PartitionMode.QUANTITY_ONLY:
+            if self.mode not in FLOORED_MODES:
                 raise ValueError(
-                    f"quantity_floor applies to quantity_only only, not {self.mode.value}"
+                    f"quantity_floor applies to quantity_only and combined only, "
+                    f"not {self.mode.value}"
                 )
             if self.quantity_floor < 1:
                 raise ValueError(f"quantity_floor must be >= 1, got {self.quantity_floor}")
-        if self.mode is PartitionMode.QUANTITY_ONLY:
-            # No redraw happens in this mode, so no row may claim one did.
+        if self.quantity_calibration_id is not None and self.mode not in FLOORED_MODES:
+            raise ValueError(
+                f"quantity_calibration_id applies to quantity_only and combined only, "
+                f"not {self.mode.value}"
+            )
+        if self.mode in NO_REDRAW:
+            # No redraw happens in these modes, so no row may claim one did.
             if self.min_size_policy != 0:
                 raise ValueError(
-                    "quantity_only never redraws; its only size mechanism is quantity_floor. "
+                    f"{self.mode.value} never redraws; {NO_REDRAW[self.mode]}. "
                     f"Set min_size_policy to 0, got {self.min_size_policy}"
                 )
             if self.max_redraws != DEFAULT_MAX_REDRAWS:
                 raise ValueError(
-                    f"quantity_only never redraws; leave max_redraws at {DEFAULT_MAX_REDRAWS}"
-                )
-        if self.mode is PartitionMode.PURE_LABEL:
-            if self.min_size_policy != 0:
-                raise ValueError(
-                    "pure_label never redraws; every client holds N // K or N // K + 1 samples. "
-                    f"Set min_size_policy to 0, got {self.min_size_policy}"
-                )
-            if self.max_redraws != DEFAULT_MAX_REDRAWS:
-                raise ValueError(
-                    f"pure_label never redraws; leave max_redraws at {DEFAULT_MAX_REDRAWS}"
+                    f"{self.mode.value} never redraws; leave max_redraws at {DEFAULT_MAX_REDRAWS}"
                 )
         if self.K < 2:
             raise ValueError(f"K must be >= 2, got {self.K}")
@@ -220,7 +227,12 @@ def to_dict(config: ExperimentConfig) -> dict[str, Any]:
 # Fields added after the first schema, with their defaults. They enter config_hash only when
 # set to something else, so every run recorded before them still resumes.
 _ADDED_FIELD_DEFAULTS = {
-    "partition": {"size_cap": "none", "max_redraws": DEFAULT_MAX_REDRAWS, "quantity_floor": None}
+    "partition": {
+        "size_cap": "none",
+        "max_redraws": DEFAULT_MAX_REDRAWS,
+        "quantity_floor": None,
+        "quantity_calibration_id": None,
+    }
 }
 
 

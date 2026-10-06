@@ -9,7 +9,8 @@ Label-skew modes: for one (dataset, K, mode, size_cap, min_size_policy) this
 partitions at a dense log-spaced alpha grid (30 values in [0.01, 1000]) x 3
 trials and fits realized label-HD. quantity_only: for one (dataset, K,
 quantity_floor) it partitions at 30 log-spaced beta values in [0.001, 1000]
-x 3 trials and fits realized quantity-HD. Either way the file records mean
+x 3 trials and fits realized quantity-HD. `--trials n` uses trials 0..n-1
+instead (a new calibration_id). Either way the file records mean
 label-HD and quantity-HD per point, the seeds and the git commit, and is
 written to calibration/{calibration_id}.json.
 
@@ -29,6 +30,18 @@ pass `labels` to refine by bisection against fresh partitions. Points where
 any trial exhausted its redraw budget are kept in the file but left out of the
 fit. Target HD levels are not chosen here.
 
+Grid cells give targets instead of parameters: `resolve_targets` fills a null
+alpha from `target_label_hd` and the curve `calibration_id`, and a null beta
+from `target_quantity_hd` and the curve `quantity_calibration_id`, at grid
+expansion. A target of 0 means no skew on that axis (`NO_SKEW`). combined has
+no curve of its own. Its sizes come from the same draw as quantity_only's, so
+the quantity_only beta curve holds for it exactly. Its label-HD stayed within
+0.03 of pure_label's at the same alpha across the whole quantity range
+(CIFAR-10, K = 30, alpha 0.15 and 1, beta down to 0.05), so it reads alpha off
+the pure_label curve. Every row's |realized - target| <= 0.05 label check
+catches a cell where that stops holding. Quantity targets are checked per
+level, over 20 seeds (`experiments.quantity_levels`).
+
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
@@ -41,6 +54,7 @@ from pathlib import Path
 
 import numpy as np
 
+from experiments.config import FLOORED_MODES, PartitionMode
 from experiments.recording import atomic_write_text, git_provenance, utc_stamp
 from experiments.seeding import derive_seeds
 from partitioning.allocations import pure_label
@@ -61,6 +75,16 @@ PARAMETER = {
 }
 NEVER_REDRAW = ("pure_label", "quantity_only")
 FITTED_METRIC = {"alpha": "label_hd", "beta": "quantity_hd"}
+# A target of exactly 0 resolves to this concentration, not to a value read off a
+# curve: realized HD is never 0, and the fitted ranges start near 0.01 at K = 30.
+NO_SKEW = 1e6
+# The mode whose alpha curve a mode's label-HD targets are read from, where not its own.
+LABEL_CURVE_MODE = {"combined": "pure_label"}
+# (parameter, target field, curve field) for the two axes.
+_AXES = (
+    ("alpha", "target_label_hd", "calibration_id"),
+    ("beta", "target_quantity_hd", "quantity_calibration_id"),
+)
 
 
 def _mode_parameter(mode: str) -> str:
@@ -367,6 +391,62 @@ def load_calibration(calibration_id: str, directory: str | Path = CALIBRATION_DI
     return json.loads((Path(directory) / f"{calibration_id}.json").read_text(encoding="utf-8"))
 
 
+def resolve_targets(cell: dict, directory: str | Path = CALIBRATION_DIR) -> dict:
+    """Fill a grid cell's null alpha and beta from its HD targets; returns the cell.
+
+    `cell` is a config as a plain dict (`experiments.config.to_dict`). An axis
+    is resolved when the mode uses its parameter, the parameter is null and
+    the target is set. Target 0 gives `NO_SKEW`. Any other target is
+    interpolated on the curve the axis's calibration field names
+    (`alpha_for_target` / `beta_for_target`), after checking that the curve
+    was made for this cell. A parameter set explicitly is kept; its target
+    then only feeds the label check, the deviation fields and the level check.
+    """
+    p = cell["partition"]
+    mode = PartitionMode(p["mode"])
+    uses = {"alpha": mode is not PartitionMode.QUANTITY_ONLY, "beta": mode in FLOORED_MODES}
+    for parameter, target_key, curve_key in _AXES:
+        target = p.get(target_key)
+        if not uses[parameter] or p.get(parameter) is not None or target is None:
+            continue
+        if target == 0:
+            p[parameter] = NO_SKEW
+            continue
+        if p.get(curve_key) is None:
+            raise ValueError(f"{target_key}={target} needs {curve_key} to resolve {parameter}")
+        curve = load_calibration(p[curve_key], directory)
+        _check_curve_fits_cell(curve, cell, parameter)
+        inverse = alpha_for_target if parameter == "alpha" else beta_for_target
+        p[parameter] = inverse(curve, target)
+    return cell
+
+
+def _check_curve_fits_cell(curve: dict, cell: dict, parameter: str) -> None:
+    """Raise unless `curve` was computed for this cell's dataset, K and partitioner."""
+    p, dataset = cell["partition"], cell["dataset"]
+    if parameter == "alpha":
+        expected = {
+            "mode": LABEL_CURVE_MODE.get(p["mode"], p["mode"]),
+            "size_cap": p["size_cap"],
+            "min_size_policy": p["min_size_policy"],
+        }
+    else:
+        floor = p["quantity_floor"] or default_quantity_floor(dataset["num_classes"])
+        expected = {"mode": "quantity_only", "quantity_floor": floor}
+    expected |= {"dataset": dataset["name"], "K": p["K"]}
+    wrong = [
+        f"{key} {curve.get(key)!r}, cell needs {value!r}"
+        for key, value in expected.items()
+        if curve.get(key) != value
+    ]
+    if curve_parameter(curve) != parameter:
+        wrong.insert(0, f"indexed by {curve_parameter(curve)}, cell needs {parameter}")
+    if wrong:
+        raise ValueError(
+            f"calibration {curve['calibration_id']} does not fit this cell: " + "; ".join(wrong)
+        )
+
+
 def main() -> None:
     from experiments.config import DatasetConfig
     from experiments.datasets import load_labels
@@ -386,6 +466,12 @@ def main() -> None:
         help="default 10; pure_label and quantity_only take 0 only",
     )
     parser.add_argument("--max-redraws", type=int, default=1000)
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=len(DEFAULT_TRIALS),
+        help="trials 0..n-1 per point (default 3); 0-2 are the grid's own partitions",
+    )
     parser.add_argument(
         "--quantity-floor",
         type=int,
@@ -408,6 +494,7 @@ def main() -> None:
         args.mode,
         args.size_cap,
         args.min_size,
+        trials=tuple(range(args.trials)),
         max_redraws=args.max_redraws,
         quantity_floor=args.quantity_floor,
     )

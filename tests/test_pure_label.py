@@ -241,9 +241,16 @@ def test_runner_writes_pure_label_rows(tmp_path):
     assert row["n_redraws"] == 0 and row["n_floored_clients"] is None
     assert row["alpha"] == 0.5 and row["beta"] is None
     assert row["max_client_size"] - row["min_client_size"] <= 1
+    stats = {}
+    expected = pure_label(
+        LABELS, 10, 0.5, np.random.default_rng(seeds_for(config).partition), stats=stats
+    )
+    assert np.allclose(row["label_drift"], stats["label_drift"])
+    assert row["mean_label_drift"] == pytest.approx(stats["label_drift"].mean())
+    assert row["max_label_drift"] == pytest.approx(stats["label_drift"].max())
+    assert "drift=" in runner.describe(row)
 
     parts = load_partition(tmp_path, row["partition_id"])
-    expected = pure_label(LABELS, 10, 0.5, np.random.default_rng(seeds_for(config).partition))
     assert all(np.array_equal(a, b) for a, b in zip(parts, expected))
     assert runner.generate_partition(config, labels=LABELS) is None
 

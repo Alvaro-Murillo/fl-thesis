@@ -245,7 +245,7 @@ def test_quantity_floor_validation():
         quantity_config(partition={"quantity_floor": 0})
     data = to_dict(load_config("config/smoke.yaml"))
     data["partition"]["quantity_floor"] = 31
-    with pytest.raises(ValueError, match="quantity_only only"):
+    with pytest.raises(ValueError, match="quantity_only and combined only"):
         from_dict(data)
 
 
@@ -274,6 +274,7 @@ def test_runner_writes_quantity_rows(tmp_path):
     assert row["alpha"] is None and row["beta"] == 0.5
     assert isinstance(row["n_floored_clients"], int)
     assert row["min_client_size"] >= min_size_bound(N, 31, row["n_floored_clients"])
+    assert row["label_drift"] is None and row["max_label_drift"] is None  # label-blind
 
     parts = load_partition(tmp_path, row["partition_id"])
     rng = np.random.default_rng(seeds_for(config).partition)
@@ -302,3 +303,4 @@ def test_natural_rows_carry_null_quantity_fields(tmp_path):
     row = runner.generate_partition(from_dict(data), labels=np.tile(np.arange(10), 500))
     assert row["partition_id"] == "30fbc685a3"
     assert row["quantity_floor"] is None and row["n_floored_clients"] is None
+    assert row["label_drift"] is None and row["mean_label_drift"] is None

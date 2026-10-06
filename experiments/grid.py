@@ -9,6 +9,11 @@ Grid contract:
     sweep     dotted key -> list of values; cells are the cartesian product
     status    `blocked` makes the grid unrunnable (see rq2.yaml)
 
+A cell may give target_label_hd / target_quantity_hd with alpha / beta null:
+the parameter is then resolved from the curve named by calibration_id /
+quantity_calibration_id, and target 0 means no skew on that axis
+(`partitioning.calibration.resolve_targets`).
+
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
 
@@ -20,6 +25,7 @@ from pathlib import Path
 import yaml
 
 from experiments.config import ExperimentConfig, from_dict, load_config, to_dict
+from partitioning.calibration import CALIBRATION_DIR, resolve_targets
 
 
 class GridBlocked(RuntimeError):
@@ -37,7 +43,9 @@ def load_grid(path: str | Path) -> dict:
         return yaml.safe_load(fh)
 
 
-def expand(path: str | Path, allow_blocked: bool = False) -> list[ExperimentConfig]:
+def expand(
+    path: str | Path, allow_blocked: bool = False, calibration_dir: str | Path = CALIBRATION_DIR
+) -> list[ExperimentConfig]:
     grid = load_grid(path)
     if grid.get("status") == "blocked" and not allow_blocked:
         raise GridBlocked(f"{path} is blocked on: {grid.get('blocked_on')}")
@@ -51,5 +59,5 @@ def expand(path: str | Path, allow_blocked: bool = False) -> list[ExperimentConf
             cell = {section: dict(values) for section, values in base.items()}
             _apply(cell, case)
             _apply(cell, dict(zip(sweep, combination)))
-            configs.append(from_dict(cell))
+            configs.append(from_dict(resolve_targets(cell, calibration_dir)))
     return configs

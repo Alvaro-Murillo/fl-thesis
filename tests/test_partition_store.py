@@ -7,7 +7,7 @@ reruns are byte-identical, `trial` changes the partition, training knobs do not.
 import numpy as np
 import pytest
 
-from experiments.config import from_dict, load_config, to_dict
+from experiments.config import NO_REDRAW, PartitionMode, from_dict, load_config, to_dict
 from experiments.recording import (
     load_partition,
     partition_exists,
@@ -130,12 +130,18 @@ def test_jsonl_appends_rather_than_overwrites(tmp_path):
     assert [row["n"] for row in read_jsonl(tmp_path / "partitions.jsonl")] == [0, 1, 2]
 
 
-def test_unimplemented_modes_raise():
+@pytest.mark.parametrize("mode", list(PartitionMode))
+def test_every_mode_is_implemented(mode):
     from experiments.run_partition import build_partition
 
-    config = config_with(partition={"mode": "combined", "beta": 1.0})
-    with pytest.raises(NotImplementedError, match="combined"):
-        build_partition(config, generator(0))
+    alpha = None if mode is PartitionMode.QUANTITY_ONLY else 0.5
+    beta = 1.0 if mode in (PartitionMode.QUANTITY_ONLY, PartitionMode.COMBINED) else None
+    min_size = 0 if mode in NO_REDRAW else 10
+    config = config_with(
+        partition={"mode": mode.value, "alpha": alpha, "beta": beta, "min_size_policy": min_size}
+    )
+    _, parts = build_partition(config, generator(0), LABELS)
+    assert np.array_equal(np.sort(np.concatenate(parts)), np.arange(len(LABELS)))
 
 
 def test_redraw_exhaustion_writes_an_infeasible_row_and_resumes(tmp_path, monkeypatch):

@@ -1,29 +1,60 @@
-# RQ3 - STUB. Blocked on the target-level calibration table and the combined mode.
+# RQ3 - STUB. Blocked on the target levels and a pure_label alpha curve.
 #
 # The additivity test compares delta_combined against
-# delta_label-only + delta_quantity-only, which is a lookup across matched grid
-# cells: the three skew arms must sit at the same target HDs, and a no-skew
-# baseline is needed for every delta to be measured against.
+# delta_label-only + delta_quantity-only at matched levels. Every cell is
+# combined: with the lowest level on each axis at 0, the grid's edges are the
+# single-skew arms and its corner is the no-skew baseline, so no separate
+# pure_label or quantity_only cells are run. That keeps all three arms on one
+# construction and on common random numbers: at a given trial, cells with the
+# same beta hold identical client sizes, and cells with the same alpha draw
+# identical label mixes. quantity_only would not do as the quantity arm: it is
+# label-blind and carries up to ~0.17 incidental label-HD at strong quantity
+# skew (CIFAR-10, K = 30); combined at target_label_hd 0 carries ~0.01.
 #
-# Needs the combined (two-stage nested) mode implemented, plus calibration for
-# both the label and quantity dials (quantity_only is implemented).
+# Targets resolve to alpha / beta when the grid is expanded
+# (partitioning.calibration.resolve_targets). 0 means no skew on that axis
+# (concentration 1e6); any other target is read off the pure_label alpha curve
+# and the 20-trial quantity_only beta curve. That curve is within 0.004 of a
+# 1000-seed mean for targets 0.1-0.6 (0.021 at 0.7).
+#
+# Quantity targets are level names: every size draw is kept, the analysis uses
+# each row's realized quantity-HD, and a level is feasible if its mean over 20
+# seeds is within 0.05 of the target. Check the levels before running:
+#   python -m experiments.quantity_levels --grid config/grids/rq3.yaml
+# On CIFAR-10 at K = 30 every level from 0.0 to 0.7 passes. The 20-seed means
+# are within 0.011 of the target up to 0.6 and 0.032 off at 0.7; the per-seed
+# sd is 0.012-0.045. Cells with the same beta and trial share one size draw
+# (`client_sizes` in the rows).
+#
+# Still needed:
+#   - the label-HD and quantity-HD levels (3 each, the first 0), chosen from the
+#     calibrated ranges;
+#   - the pure_label alpha curve for CIFAR-10 at K = 30, generated from a clean
+#     tree and committed:
+#       python -m partitioning.calibration --dataset cifar10 --K 30 --mode pure_label
+#   - mu for FedProx.
 
 status: blocked
-blocked_on: target-level calibration table; combined two-stage nested mode
+blocked_on: label-HD and quantity-HD levels; pure_label alpha curve (CIFAR-10, K = 30); FedProx mu
 
 base: config/base.yaml
 
-# Intended shape - one cell per (skew arm x matched target HD x trial):
+# Intended shape - 3 x 3 cells x 2 algorithms x 3 trials = 54 runs:
 #
 # constant:
+#   partition.mode: combined
 #   partition.K: 30
-#   partition.calibration_id: <id of the calibration table>
+#   partition.alpha: null                 # resolved from target_label_hd
+#   partition.beta: null                  # resolved from target_quantity_hd
+#   partition.min_size_policy: 0
+#   partition.calibration_id: <pure_label alpha curve, CIFAR-10, K = 30>
+#   partition.quantity_calibration_id: 8f995f9546   # quantity_only beta curve, K = 30, 20 trials
+#
+# cases:
+#   - {federated.algorithm: fedavg}
+#   - {federated.algorithm: fedprox, federated.mu: <mu>}
 #
 # sweep:
-#   partition.mode: [pure_label, quantity_only, combined]
-#   partition.target_label_hd: [...]      # null for the quantity_only arm
-#   partition.target_quantity_hd: [...]   # null for the pure_label arm
+#   partition.target_label_hd: [0.0, <mid>, <high>]
+#   partition.target_quantity_hd: [0.0, <mid>, <high>]
 #   runtime.trial: [0, 1, 2]
-#
-# The baseline cell (no label skew, no quantity skew) is not expressible as a
-# sweep row - it needs its own entry once the modes exist.

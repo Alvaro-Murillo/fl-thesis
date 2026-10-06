@@ -6,8 +6,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from experiments.config import from_dict, load_config, to_dict
 from experiments.seeding import derive_seeds
 from partitioning.calibration import (
+    NO_SKEW,
     alpha_for_target,
     beta_for_target,
     calibration_id,
@@ -16,6 +18,7 @@ from partitioning.calibration import (
     evaluate,
     load_calibration,
     monotone_decreasing,
+    resolve_targets,
     save_calibration,
 )
 from partitioning.dirichlet import natural_per_class
@@ -229,3 +232,139 @@ def test_save_load_roundtrip_and_id_depends_on_settings(tmp_path, curve):
         trials=(0, 1, 2),
     )
     assert other["calibration_id"] != curve["calibration_id"]
+
+
+# --- targets -> parameters ----------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def target_curves(tmp_path_factory):
+    """(directory, label curve, quantity curve), both for CIFAR-10-named cells at K = 10."""
+    directory = tmp_path_factory.mktemp("calibration")
+    label = compute_curve(LABELS, "cifar10", 10, "pure_label", alphas=ALPHAS, trials=(0, 1))
+    quantity = compute_curve(
+        QUANTITY_LABELS, "cifar10", 10, "quantity_only", betas=BETAS, trials=(0, 1)
+    )
+    natural = {**label, "mode": "natural_per_class", "calibration_id": "natural000"}
+    for curve in (label, quantity, natural):
+        save_calibration(curve, directory)
+    return directory, label, quantity
+
+
+def combined_cell(**partition):
+    cell = to_dict(load_config("config/smoke_combined.yaml"))  # K = 10
+    cell["partition"].update({"alpha": None, "beta": None, **partition})
+    return cell
+
+
+def mid(curve, metric):
+    low, high = curve[f"{metric}_range"]
+    return (low + high) / 2
+
+
+def test_targets_resolve_on_both_curves(target_curves):
+    directory, label, quantity = target_curves
+    t_label, t_quantity = mid(label, "label_hd"), mid(quantity, "quantity_hd")
+    cell = combined_cell(
+        target_label_hd=t_label,
+        target_quantity_hd=t_quantity,
+        calibration_id=label["calibration_id"],
+        quantity_calibration_id=quantity["calibration_id"],
+    )
+    p = from_dict(resolve_targets(cell, directory)).partition
+    assert p.alpha == alpha_for_target(label, t_label)
+    assert p.beta == beta_for_target(quantity, t_quantity)
+
+
+def test_target_zero_is_no_skew_and_needs_no_curve():
+    cell = resolve_targets(combined_cell(target_label_hd=0.0, target_quantity_hd=0.0))
+    assert cell["partition"]["alpha"] == cell["partition"]["beta"] == NO_SKEW
+
+
+def test_explicit_parameters_are_kept():
+    cell = combined_cell(alpha=0.5, beta=2.0, target_label_hd=0.3, calibration_id="absent")
+    cell["partition"].update(target_quantity_hd=0.3, quantity_calibration_id="absent")
+    p = resolve_targets(cell)["partition"]  # never opens calibration/absent.json
+    assert (p["alpha"], p["beta"]) == (0.5, 2.0)
+
+
+def test_unused_axes_are_left_alone(target_curves):
+    directory, label, _ = target_curves
+    cell = to_dict(load_config("config/smoke_pure_label.yaml"))
+    cell["partition"].update(alpha=None, target_label_hd=0.0, target_quantity_hd=0.3)
+    p = from_dict(resolve_targets(cell, directory)).partition
+    assert p.alpha == NO_SKEW and p.beta is None
+
+
+def test_resolution_refuses_a_missing_or_mismatched_curve(target_curves):
+    directory, label, quantity = target_curves
+    t = mid(label, "label_hd")
+    with pytest.raises(ValueError, match="needs calibration_id"):
+        resolve_targets(combined_cell(target_label_hd=t), directory)
+    swapped = combined_cell(target_quantity_hd=t, quantity_calibration_id=label["calibration_id"])
+    with pytest.raises(ValueError, match="indexed by alpha"):
+        resolve_targets(swapped, directory)
+    natural = combined_cell(target_label_hd=t, calibration_id="natural000")
+    with pytest.raises(ValueError, match="mode 'natural_per_class', cell needs 'pure_label'"):
+        resolve_targets(natural, directory)
+    wrong_K = combined_cell(target_label_hd=t, calibration_id=label["calibration_id"], K=30)
+    with pytest.raises(ValueError, match="K 10, cell needs 30"):
+        resolve_targets(wrong_K, directory)
+    too_far = combined_cell(target_label_hd=0.99, calibration_id=label["calibration_id"])
+    with pytest.raises(ValueError, match="outside"):
+        resolve_targets(too_far, directory)
+
+
+def test_grid_expansion_resolves_targets(tmp_path, target_curves):
+    from experiments.grid import expand
+
+    directory, label, quantity = target_curves
+    t_label, t_quantity = mid(label, "label_hd"), mid(quantity, "quantity_hd")
+    grid = tmp_path / "grid.yaml"
+    grid.write_text(
+        "base: config/smoke_combined.yaml\n"
+        "constant:\n"
+        "  partition.alpha: null\n"
+        "  partition.beta: null\n"
+        f"  partition.calibration_id: {label['calibration_id']}\n"
+        f"  partition.quantity_calibration_id: {quantity['calibration_id']}\n"
+        "sweep:\n"
+        f"  partition.target_label_hd: [0.0, {t_label}]\n"
+        f"  partition.target_quantity_hd: [0.0, {t_quantity}]\n",
+        encoding="utf-8",
+    )
+    configs = expand(grid, calibration_dir=directory)
+    resolved = {(c.partition.alpha, c.partition.beta) for c in configs}
+    alpha, beta = alpha_for_target(label, t_label), beta_for_target(quantity, t_quantity)
+    assert resolved == {(NO_SKEW, NO_SKEW), (NO_SKEW, beta), (alpha, NO_SKEW), (alpha, beta)}
+
+
+@pytest.mark.slow
+def test_combined_hits_label_targets_off_the_pure_label_curve(tmp_path):
+    """The pure_label alpha curve stands in for combined's across the quantity range."""
+    from experiments.config import DatasetConfig
+    from experiments.datasets import load_labels
+    from experiments.run_partition import build_partition
+    from experiments.seeding import generator, seeds_for
+    from shutil import copy
+
+    labels = load_labels(DatasetConfig("cifar10", 10))
+    label = compute_curve(labels, "cifar10", 30, "pure_label")
+    save_calibration(label, tmp_path)
+    copy("calibration/8f995f9546.json", tmp_path)  # quantity_only beta curve, K = 30, 20 trials
+    for t_label in (0.25, 0.5, 0.75):
+        for t_quantity in (0.0, 0.2, 0.6):
+            cell = combined_cell(
+                K=30,
+                target_label_hd=t_label,
+                target_quantity_hd=t_quantity,
+                calibration_id=label["calibration_id"],
+                quantity_calibration_id="8f995f9546",
+            )
+            realized = []
+            for trial in (0, 1, 2):
+                cell["runtime"]["trial"] = trial
+                config = from_dict(resolve_targets(cell, tmp_path))
+                _, parts = build_partition(config, generator(seeds_for(config).partition), labels)
+                realized.append(partition_metrics(labels, parts, 10)["realized_label_hd"])
+            assert np.mean(realized) == pytest.approx(t_label, abs=0.05)

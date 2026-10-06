@@ -53,11 +53,22 @@ def test_unknown_key_rejected():
 def test_mode_parameter_requirements():
     data = to_dict(load_config(f"{CONFIG_DIR}/base.yaml"))
     data["partition"]["mode"] = PartitionMode.COMBINED.value
+    data["partition"]["min_size_policy"] = 0  # combined never redraws
     with pytest.raises(ValueError, match="requires beta"):
         from_dict(data)
 
     data["partition"]["beta"] = 1.0
     assert from_dict(data).partition.mode is PartitionMode.COMBINED
+
+
+def test_quantity_calibration_id_needs_a_beta_mode():
+    data = to_dict(load_config("config/smoke_pure_label.yaml"))
+    data["partition"]["quantity_calibration_id"] = "f09e0cfdf0"
+    with pytest.raises(ValueError, match="quantity_calibration_id applies to"):
+        from_dict(data)
+    data = to_dict(load_config("config/smoke_combined.yaml"))
+    data["partition"]["quantity_calibration_id"] = "f09e0cfdf0"
+    assert from_dict(data).partition.quantity_calibration_id == "f09e0cfdf0"
 
 
 def test_smoke_config_hash_is_stable():
