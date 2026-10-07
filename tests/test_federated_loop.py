@@ -5,6 +5,11 @@ mean as a stand-in: it is not FedAvg's sample-weighted average, only something
 that lets the loop run.
 """
 
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
@@ -329,3 +334,70 @@ def test_runs_on_cuda():
     )
     assert len(results) == 2
     assert all(p.is_cuda for p in model.parameters())
+
+
+# A fresh interpreter per run: CUBLAS_WORKSPACE_CONFIG only takes effect if it is set
+# before torch is imported, and pytest has imported torch already. The CNN is the
+# benchmark copy in tests/gpu_check.py, a stand-in until the thesis models exist.
+STRICT_GPU_RUN = textwrap.dedent("""
+    import hashlib, sys
+    sys.path.insert(0, {root!r})
+    from experiments.seeding import configure_torch, derive_seeds, enable_cublas_determinism
+    enable_cublas_determinism()
+
+    import numpy as np
+    import torch
+    from torchvision.datasets import CIFAR10
+
+    from federated.data import FederatedData
+    from federated.loop import run_federated
+    from tests.gpu_check import CNN
+
+    def tensors(train):
+        ds = CIFAR10("data", train=train, download=False)
+        x = torch.as_tensor(np.asarray(ds.data)).permute(0, 3, 1, 2).float().div(255)
+        return x.cuda(), torch.as_tensor(ds.targets).cuda()
+
+    def mean_of_states(global_state, updates):
+        return {{n: torch.stack([u.state[n] for u in updates]).mean(0) for n in global_state}}
+
+    seeds = derive_seeds(0)
+    configure_torch(seeds, deterministic=True)
+    x, y = tensors(train=True)
+    test_x, test_y = tensors(train=False)
+    rng = np.random.default_rng(0)
+    cuts = np.sort(rng.choice(np.arange(1, len(y)), size=29, replace=False))
+    data = FederatedData(x, y, np.split(rng.permutation(len(y)), cuts))  # 30 unequal clients
+    model = CNN().cuda()
+    model(x[:2])  # materialise LazyLinear under the init seed
+    results = run_federated(
+        model, data, test_x, test_y, rounds=2, local_epochs=1, batch_size=64,
+        make_optimizer=lambda p: torch.optim.Adam(p, lr=0.001),
+        aggregate=mean_of_states, train_seed=seeds.train,
+    )
+    digest = hashlib.sha256()
+    for name, value in sorted(model.state_dict().items()):
+        digest.update(name.encode())
+        digest.update(value.cpu().numpy().tobytes())
+    print(torch.are_deterministic_algorithms_enabled())
+    print(digest.hexdigest())
+    print([r.test_acc for r in results], [r.client_train_loss for r in results])
+""")
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA device")
+def test_strict_gpu_reruns_are_bit_exact_on_cifar10():
+    """Two fresh processes, real CIFAR-10, K = 30 unequal clients, 2 rounds: same bytes."""
+    root = Path(__file__).resolve().parents[1]
+    script = STRICT_GPU_RUN.format(root=str(root))
+    outputs = []
+    for _ in range(2):
+        done = subprocess.run(
+            [sys.executable, "-c", script], cwd=root, capture_output=True, text=True, timeout=600
+        )
+        assert done.returncode == 0, done.stderr
+        outputs.append(done.stdout.splitlines())
+    first, second = outputs
+    assert first[0] == "True"  # strict mode was really on
+    assert first == second
