@@ -36,15 +36,21 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - calibration.py - alpha -> label-HD and beta -> quantity-HD curves and their
     inverses
 - models/ - CNN and DNN architectures
+  - networks.py - the source paper's CNN (images) and DNN (tabular), Glorot-uniform
+    weights and zero biases drawn from the init seed
 - federated/ - the federated simulation, a custom loop (not Flower)
   - data.py - the training set on the device, clients as index tensors, seeded batches
   - loop.py - client selection, broadcast, local training with a fresh optimizer per
     client and round, a pluggable server rule, per-round test evaluation
+  - centralized.py - the whole training set as one client with one optimizer: the
+    centralized baseline and the models' sanity check
 - experiments/ - config schema, seeding, recording, runner scripts
   - config.py - frozen dataclasses, YAML load/dump, `config_hash`
   - seeding.py - seed derivation per trial, torch determinism
   - recording.py - partition store, run records, atomic writes, provenance
   - datasets.py - dataset label registry (currently `cifar10`)
+  - tensors.py - training and test tensors, images as float32 in [0, 1], in the same
+    sample order as the label registry
   - run_partition.py - generate and record one partition
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
   - quantity_levels.py - the 20-seed feasibility check of a grid's quantity levels
@@ -427,5 +433,12 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     including orchestration and per-round test evaluation (2.10 in the bare
     step benchmark), about 13 min per 40-round x 10-epoch run; 1.05 GB peak VRAM
     with the whole dataset on the GPU
+- Models: the source paper's CNN (122,570 parameters on CIFAR-10) and DNN (3 x 500),
+  Glorot-uniform weights with zero biases, inputs scaled to [0, 1]
+  - Centralized CNN on CIFAR-10 (Adam 0.001, batch 64, strict determinism, trials
+    0-2): test accuracy 0.702-0.711 after 10 epochs and 0.714-0.725 at best
+    (epochs 14-16). In trial 0 the test loss is lowest at epoch 11 and rises
+    after it. 2.4 ms/step with per-epoch evaluation; a rerun is bit-exact
+  - The DNN is checked on a synthetic task only; no tabular dataset is loaded yet
 - Next: RQ2 and RQ3 levels chosen from the validation tables; capped vs
   uncapped for the RQ2 natural arm

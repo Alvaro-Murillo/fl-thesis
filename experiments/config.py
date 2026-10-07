@@ -19,6 +19,7 @@ from typing import Any
 import yaml
 
 ALGORITHMS = frozenset({"fedavg", "fedprox"})
+ARCHS = frozenset({"cnn", "dnn"})  # mirrors models.networks.ARCHS
 OPTIMIZERS = frozenset({"adam", "sgd"})
 DEVICES = frozenset({"cuda", "cpu"})
 SIZE_CAPS = ("none", "niid_bench")  # mirrors partitioning.dirichlet.SIZE_CAPS
@@ -124,8 +125,12 @@ class PartitionConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     arch: str
-    in_channels: int
+    in_channels: int  # image channels for the cnn, feature count for the dnn
     num_classes: int
+
+    def __post_init__(self):
+        if self.arch not in ARCHS:
+            raise ValueError(f"arch must be one of {sorted(ARCHS)}, got {self.arch!r}")
 
 
 @dataclass(frozen=True)

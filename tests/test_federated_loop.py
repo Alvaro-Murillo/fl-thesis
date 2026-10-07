@@ -337,8 +337,7 @@ def test_runs_on_cuda():
 
 
 # A fresh interpreter per run: CUBLAS_WORKSPACE_CONFIG only takes effect if it is set
-# before torch is imported, and pytest has imported torch already. The CNN is the
-# benchmark copy in tests/gpu_check.py, a stand-in until the thesis models exist.
+# before torch is imported, and pytest has imported torch already.
 STRICT_GPU_RUN = textwrap.dedent("""
     import hashlib, sys
     sys.path.insert(0, {root!r})
@@ -347,29 +346,24 @@ STRICT_GPU_RUN = textwrap.dedent("""
 
     import numpy as np
     import torch
-    from torchvision.datasets import CIFAR10
 
+    from experiments.config import DatasetConfig, ModelConfig
+    from experiments.tensors import load_tensors
     from federated.data import FederatedData
     from federated.loop import run_federated
-    from tests.gpu_check import CNN
-
-    def tensors(train):
-        ds = CIFAR10("data", train=train, download=False)
-        x = torch.as_tensor(np.asarray(ds.data)).permute(0, 3, 1, 2).float().div(255)
-        return x.cuda(), torch.as_tensor(ds.targets).cuda()
+    from models.networks import build_model
 
     def mean_of_states(global_state, updates):
         return {{n: torch.stack([u.state[n] for u in updates]).mean(0) for n in global_state}}
 
     seeds = derive_seeds(0)
     configure_torch(seeds, deterministic=True)
-    x, y = tensors(train=True)
-    test_x, test_y = tensors(train=False)
+    tensors = load_tensors(DatasetConfig("cifar10", 10), "cuda")
+    x, y, test_x, test_y = tensors.train_x, tensors.train_y, tensors.test_x, tensors.test_y
     rng = np.random.default_rng(0)
     cuts = np.sort(rng.choice(np.arange(1, len(y)), size=29, replace=False))
     data = FederatedData(x, y, np.split(rng.permutation(len(y)), cuts))  # 30 unequal clients
-    model = CNN().cuda()
-    model(x[:2])  # materialise LazyLinear under the init seed
+    model = build_model(ModelConfig("cnn", 3, 10), tensors.input_shape, seeds.init).cuda()
     results = run_federated(
         model, data, test_x, test_y, rounds=2, local_epochs=1, batch_size=64,
         make_optimizer=lambda p: torch.optim.Adam(p, lr=0.001),
