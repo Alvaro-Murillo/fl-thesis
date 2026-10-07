@@ -5,8 +5,10 @@ Every round:
     select clients -> broadcast the global weights -> train each client
     locally -> aggregate the client weights -> evaluate the global model
 
-All clients run in one process, one after another, on one device. There is no
-networking, so "broadcast" is loading the global state into a worker model.
+This is the structure of FederatedAveraging (McMahan et al. 2017, Algorithm 1),
+with the server rule and the client optimizer left to the caller. All clients
+run in one process, one after another, on one device. There is no networking,
+so "broadcast" is loading the global state into a worker model.
 
 What the loop leaves to its caller:
     model           already built and initialised (the init seed is the caller's)
@@ -90,7 +92,9 @@ def client_generator(train_seed: int, round: int, client: int) -> torch.Generato
 def select_clients(num_clients: int, fraction: float, train_seed: int, round: int) -> list[int]:
     """max(floor(fraction * K), 1) clients without replacement, in client order.
 
-    With fraction 1 every client is selected and no random number is drawn.
+    The rule m = max(C * K, 1) is McMahan et al. 2017, Algorithm 1; the floor for
+    non-integer C * K is this module's choice. With fraction 1 every client is
+    selected and no random number is drawn.
     """
     m = max(int(np.floor(fraction * num_clients + 1e-9)), 1)
     if m >= num_clients:
