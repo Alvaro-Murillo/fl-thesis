@@ -36,7 +36,10 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - calibration.py - alpha -> label-HD and beta -> quantity-HD curves and their
     inverses
 - models/ - CNN and DNN architectures
-- federated/ - FedAvg, FedProx, training loop
+- federated/ - the federated simulation, a custom loop (not Flower)
+  - data.py - the training set on the device, clients as index tensors, seeded batches
+  - loop.py - client selection, broadcast, local training with a fresh optimizer per
+    client and round, a pluggable server rule, per-round test evaluation
 - experiments/ - config schema, seeding, recording, runner scripts
   - config.py - frozen dataclasses, YAML load/dump, `config_hash`
   - seeding.py - seed derivation per trial, torch determinism
@@ -416,5 +419,13 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     level 0.6 and +0.03 to +0.04 at 0.8 (20-seed means). The 4 failing cells,
     label target 0.25 at quantity 0.8 and 0.3 at 0.6-0.8, are that rise on top of
     trials 0-2 sitting about 0.015 above the 20-seed mean
+- Federated simulation loop: a custom loop rather than Flower, since the
+  clients are simulated in one process with no networking
+  - Each client's batch order comes from its own (train_seed, round, client)
+    stream, so an update does not depend on client order; reruns are identical
+  - Real CIFAR-10, K = 30, equal sizes, strict determinism: 2.36 ms/step
+    including orchestration and per-round test evaluation (2.10 in the bare
+    step benchmark), about 13 min per 40-round x 10-epoch run; 1.05 GB peak VRAM
+    with the whole dataset on the GPU
 - Next: RQ2 and RQ3 levels chosen from the validation tables; capped vs
   uncapped for the RQ2 natural arm
