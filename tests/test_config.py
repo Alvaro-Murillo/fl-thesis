@@ -71,6 +71,16 @@ def test_quantity_calibration_id_needs_a_beta_mode():
     assert from_dict(data).partition.quantity_calibration_id == "f09e0cfdf0"
 
 
+def test_base_config_trains_with_the_source_papers_settings():
+    """Jimenez-Gutierrez et al., Section 4, "Models"; all K = 30 clients train every round."""
+    config = load_config(f"{CONFIG_DIR}/base.yaml")
+    assert config.partition.K == 30
+    f = config.federated
+    assert (f.optimizer, f.lr, f.batch_size) == ("adam", 0.001, 64)
+    assert (f.rounds, f.local_epochs, f.client_fraction) == (40, 10, 1.0)
+    assert config.model.arch == "cnn"
+
+
 def test_smoke_config_hash_is_stable():
     """runs.jsonl resumes by config_hash; fields added later must not move it."""
     config = load_config("config/smoke.yaml")

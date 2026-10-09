@@ -18,6 +18,10 @@ partition:
   min_size_policy: 10
   calibration_id: null
 
+# K = 30 above and the training settings below are the source paper's
+# (Jimenez-Gutierrez et al., Section 4, "Models"). The paper gives no participation
+# fraction for FedAvg/FedProx (only Rand's is tuned) and its FedProx aggregates
+# updates from all devices, so client_fraction 1.0: every client trains every round.
 model:
   arch: cnn
   in_channels: 3

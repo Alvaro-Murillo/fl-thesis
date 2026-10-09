@@ -57,6 +57,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
     sample order as the label registry
   - run_partition.py - generate and record one partition
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
+  - run_training.py - train one config or a whole grid on stored partitions, with
+    resume
   - quantity_levels.py - the 20-seed feasibility check of a grid's quantity levels
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
   smoke_combined.yaml, grids/ (one per research question, quantity_skew.yaml, and the
@@ -88,6 +90,14 @@ Generate every partition in a grid (labels load once; a killed sweep resumes
 where it stopped; grids marked `status: blocked` are refused):
 
     python -m experiments.run_grid --grid config/grids/rq1.yaml
+
+Train on stored partitions (generate them first; training never makes one). A grid
+is checked for missing partitions before its first run; completed runs are
+skipped unless `--force` is passed, and a failed or killed run is trained again:
+
+    python -m experiments.run_partition --config config/smoke.yaml
+    python -m experiments.run_training --config config/smoke.yaml
+    python -m experiments.run_training --grid config/grids/rq3.yaml
 
 Build an alpha -> label-HD calibration curve (writes `calibration/{id}.json`):
 
@@ -473,5 +483,13 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   - Real CIFAR-10, K = 30, strict determinism: 2.70 ms/step against FedAvg's 2.34,
     about 14 min per 40-round x 10-epoch run
   - mu is not chosen yet; the source paper's grid is {0, 0.001, 0.01, 0.1, 1, 10, 100}
+- Training runner (`experiments/run_training.py`): a config or a grid trains on its
+  stored partitions with the source paper's settings in config/base.yaml (K = 30,
+  Adam 0.001, batch 64, 40 rounds x 10 local epochs; checked against arXiv:2503.17070
+  v1 and v2), and FedAvg's server rule for both algorithms
+  - A cell trained second in a sweep gives the same bytes as the cell trained alone
+    in a fresh process (real CIFAR-10 on the GPU, strict determinism)
+  - Real CIFAR-10, K = 30, natural_per_class alpha = 0.5, 2 rounds x 10 epochs: 2.46
+    ms/step for FedAvg and 2.90 for FedProx, about 13 and 15 min per 40 x 10 run
 - Next: RQ2 and RQ3 levels chosen from the validation tables; capped vs
   uncapped for the RQ2 natural arm
