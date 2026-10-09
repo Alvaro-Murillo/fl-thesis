@@ -2,7 +2,8 @@
 
 The loop takes the server rule as a parameter. These tests use a plain unweighted
 mean as a stand-in: it is not FedAvg's sample-weighted average, only something
-that lets the loop run.
+that lets the loop run. The slow GPU rerun test at the end uses FedAvg itself
+(`federated/aggregation.py`, tested in test_aggregation.py).
 """
 
 import subprocess
@@ -349,12 +350,10 @@ STRICT_GPU_RUN = textwrap.dedent("""
 
     from experiments.config import DatasetConfig, ModelConfig
     from experiments.tensors import load_tensors
+    from federated.aggregation import fedavg
     from federated.data import FederatedData
     from federated.loop import run_federated
     from models.networks import build_model
-
-    def mean_of_states(global_state, updates):
-        return {{n: torch.stack([u.state[n] for u in updates]).mean(0) for n in global_state}}
 
     seeds = derive_seeds(0)
     configure_torch(seeds, deterministic=True)
@@ -367,7 +366,7 @@ STRICT_GPU_RUN = textwrap.dedent("""
     results = run_federated(
         model, data, test_x, test_y, rounds=2, local_epochs=1, batch_size=64,
         make_optimizer=lambda p: torch.optim.Adam(p, lr=0.001),
-        aggregate=mean_of_states, train_seed=seeds.train,
+        aggregate=fedavg, train_seed=seeds.train,
     )
     digest = hashlib.sha256()
     for name, value in sorted(model.state_dict().items()):
