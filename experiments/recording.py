@@ -6,7 +6,8 @@ same bytes, and changing `federated.rounds` does not regenerate anything.
 
 Runs append to `runs.jsonl` twice - once at start with status `running`, once
 at the end with the outcome - so a killed run is visible as `running` next to
-a partial but parseable `history.csv`. Readers take the last row per `run_id`.
+a partial but parseable `history.csv` and `clients.csv`. Readers take the last
+row per `run_id`.
 
 Every write lands via a temp file plus `os.replace`, because a run killed
 mid-write on Windows otherwise leaves half a JSON file behind.
@@ -151,9 +152,49 @@ HISTORY_COLUMNS = (
     "round",
     "global_test_acc",
     "global_test_loss",
-    "mean_client_train_loss",
+    "train_loss",
     "round_wall_s",
 )
+CLIENT_COLUMNS = ("round", "client", "num_samples", "train_loss", "steps")
+
+RTA_FRACTION = 0.9
+# Accuracies are counts over a test set, so a tie with the threshold is exact in theory but
+# can miss by one float rounding (221 of the 1000 exact ties on a 10,000-sample test set).
+# 1e-9 is far below one test sample (1e-4 here, about 1e-5 for a 20% test split of Covtype).
+_RTA_TOLERANCE = 1e-9
+
+
+def rounds_to_accuracy(
+    accuracies, fraction: float = RTA_FRACTION, reference: float | None = None
+) -> int | None:
+    """Rounds-to-accuracy: the first round whose accuracy is at least fraction * reference.
+
+    `accuracies` are the global model's test accuracies after rounds 1, 2, ...; the
+    result is 1-indexed. `reference` defaults to the best of them, so with the
+    default fraction this is the minimum number of communication rounds needed to
+    reach 90% of the maximum accuracy the run achieved. None if `accuracies` is
+    empty, or if an explicit reference is never reached.
+
+    The metric is the source paper's (Jimenez-Gutierrez et al., arXiv:2503.17070 v2,
+    Section 4.3). It cites Wu & Wang 2021 for it, but Wu & Wang count rounds to a fixed
+    target accuracy (95% on MNIST, 80% on FashionMNIST; arXiv:2012.00661, Section V);
+    the target relative to the maximum is the source paper's. The source paper's
+    results text and tables take each algorithm's own maximum ("how many rounds each
+    aggregation algorithm requires to achieve 90% of its maximum accuracy", Section
+    5.3 in v2, V-A in v1), which is the default here. The definition added in v2's
+    Section 4.3 says "the maximum accuracy among the aggregation algorithms"; pass
+    that maximum as `reference` for this reading.
+    """
+    accuracies = list(accuracies)
+    if not accuracies:
+        return None
+    if not 0.0 < fraction <= 1.0:
+        raise ValueError(f"fraction must be in (0, 1], got {fraction}")
+    threshold = fraction * (max(accuracies) if reference is None else reference)
+    for round, accuracy in enumerate(accuracies, 1):
+        if accuracy >= threshold - _RTA_TOLERANCE:
+            return round
+    return None
 
 
 def torch_provenance() -> dict:
@@ -187,74 +228,91 @@ def skip_if_exists(config, out_dir: str | Path | None = None) -> bool:
 
 
 class RunRecorder:
-    """Writes one run's rows, history and resolved config.
+    """Writes one run's rows, history, per-client log and resolved config.
+
+    history.csv has one row per round. An optional round 0 (`log_initial`) is the
+    initialised model before any training; it has no train loss or wall time and
+    does not count towards final_acc, best_acc or rta. clients.csv has one row per
+    client that trained in a round (`log_clients`).
 
     Use as a context manager: an exception is recorded as `failed` (`oom` for a
     CUDA OOM) and re-raised, so a crashed run never looks completed.
     """
 
-    def __init__(
-        self,
-        config,
-        partition_id: str,
-        out_dir: str | Path | None = None,
-        rta_target: float | None = None,
-    ):
+    def __init__(self, config, partition_id: str, out_dir: str | Path | None = None):
         self.config = config
         self.partition_id = partition_id
-        self.rta_target = rta_target
         self.run_id = config_hash(config)
         self.out_dir = Path(out_dir or config.runtime.out_dir)
         self.dir = self.out_dir / "runs" / self.run_id
-        self.accuracies: list[float] = []
+        self.accuracies: list[float] = []  # rounds 1, 2, ...; round 0 is not in it
+        self._files = []
         self._history = None
-        self._writer = None
+        self._clients = None
         self._started = 0.0
         self._started_at = ""
+
+    def _open_csv(self, name: str, columns) -> csv.DictWriter:
+        handle = (self.dir / name).open("w", newline="", encoding="utf-8")
+        self._files.append(handle)
+        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer.writeheader()
+        handle.flush()
+        return writer
+
+    def _flush(self) -> None:
+        for handle in self._files:
+            handle.flush()  # a kill -9 must still leave every finished round
 
     def start(self) -> RunRecorder:
         self.dir.mkdir(parents=True, exist_ok=True)
         dump_config(self.config, self.dir / "config.yaml")
         self._started, self._started_at = time.perf_counter(), utc_stamp()
-        self._history = (self.dir / "history.csv").open("w", newline="", encoding="utf-8")
-        self._writer = csv.DictWriter(self._history, fieldnames=HISTORY_COLUMNS)
-        self._writer.writeheader()
-        self._history.flush()
+        self._history = self._open_csv("history.csv", HISTORY_COLUMNS)
+        self._clients = self._open_csv("clients.csv", CLIENT_COLUMNS)
         self._append_row("running")
         return self
+
+    def log_initial(self, global_test_acc: float, global_test_loss: float) -> None:
+        """Round 0: the initialised global model, evaluated before the first round."""
+        if self.accuracies:
+            raise RuntimeError("round 0 must be logged before round 1")
+        self._history.writerow(
+            {"round": 0, "global_test_acc": global_test_acc, "global_test_loss": global_test_loss}
+        )
+        self._flush()
 
     def log_round(
         self,
         round: int,
         global_test_acc: float,
         global_test_loss: float,
-        mean_client_train_loss: float,
+        train_loss: float,
         round_wall_s: float,
     ) -> None:
         self.accuracies.append(global_test_acc)
-        self._writer.writerow(
+        self._history.writerow(
             {
                 "round": round,
                 "global_test_acc": global_test_acc,
                 "global_test_loss": global_test_loss,
-                "mean_client_train_loss": mean_client_train_loss,
+                "train_loss": train_loss,
                 "round_wall_s": round_wall_s,
             }
         )
-        self._history.flush()  # a kill -9 must still leave every finished round
+        self._flush()
+
+    def log_clients(self, round: int, clients, num_samples, train_loss, steps) -> None:
+        """One clients.csv row per client that trained this round, in the order given."""
+        rows = list(zip(clients, num_samples, train_loss, steps, strict=True))
+        self._clients.writerows(dict(zip(CLIENT_COLUMNS, (round, *row))) for row in rows)
+        self._flush()
 
     def finish(self, status: str = "completed") -> None:
-        if self._history is not None:
-            self._history.close()
-            self._history = None
+        for handle in self._files:
+            handle.close()
+        self._files = []
         self._append_row(status)
-
-    def _rta(self) -> int | None:
-        """First round reaching rta_target, 1-indexed; None if never reached."""
-        if self.rta_target is None:
-            return None
-        hits = [i for i, acc in enumerate(self.accuracies, 1) if acc >= self.rta_target]
-        return hits[0] if hits else None
 
     def _append_row(self, status: str) -> None:
         done = status != "running"
@@ -279,7 +337,7 @@ class RunRecorder:
                 "deterministic": runtime.deterministic,
                 "final_acc": self.accuracies[-1] if self.accuracies else None,
                 "best_acc": max(self.accuracies) if self.accuracies else None,
-                "rta": self._rta(),
+                "rta": rounds_to_accuracy(self.accuracies),
                 "wall_clock_s": round(time.perf_counter() - self._started, 3) if done else None,
                 "status": status,
                 **git_provenance(),

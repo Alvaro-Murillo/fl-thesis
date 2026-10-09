@@ -73,6 +73,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
     spread, floor behaviour and incidental label-HD
   - partition_validation.py - nominal vs measured HD for every target cell of a
     grid, per-client label histograms, and the feasibility map
+  - training_summary.py - final accuracy and rounds-to-accuracy per condition, mean
+    and sd across trials, with each condition's realized HD
 
 ## Usage
 
@@ -98,6 +100,11 @@ skipped unless `--force` is passed, and a failed or killed run is trained again:
     python -m experiments.run_partition --config config/smoke.yaml
     python -m experiments.run_training --config config/smoke.yaml
     python -m experiments.run_training --grid config/grids/rq3.yaml
+
+Summarise completed runs across trials (all runs, or one grid's):
+
+    python -m analysis.training_summary
+    python -m analysis.training_summary --grid config/grids/rq3.yaml
 
 Build an alpha -> label-HD calibration curve (writes `calibration/{id}.json`):
 
@@ -279,8 +286,16 @@ Everything lands under `results/` (gitignored), written atomically:
 - `quantity_levels.jsonl` - one row per quantity level checked: the 20-seed
   realized quantity-HD, its mean, sd and range, and `level_feasible`
 - `runs.jsonl` - one row per run at start (`running`) and at the end
-  (`completed` / `failed` / `oom`); readers take the last row per `run_id`
-- `runs/{run_id}/history.csv` - per-round accuracy and loss, flushed each round
+  (`completed` / `failed` / `oom`); readers take the last row per `run_id`.
+  `final_acc` is the test accuracy after the last round, `best_acc` the highest
+  after any round, and `rta` the first round reaching 90% of `best_acc` (the source
+  paper's rounds-to-accuracy, taken against the run's own maximum)
+- `runs/{run_id}/history.csv` - per round: the global model's test accuracy and
+  loss, `train_loss` (the trained clients' final-epoch losses weighted by sample
+  count) and wall time, flushed each round. Round 0 is the initialised model
+  before training; it has no train loss or wall time and no metric counts it
+- `runs/{run_id}/clients.csv` - one row per client per round: its sample count,
+  final-epoch training loss and optimizer steps
 - `runs/{run_id}/config.yaml` - the resolved config, so a row stays readable
   after the schema moves on
 - `analysis/` - analysis-script outputs, e.g. `fedartml_comparison_label_skew.csv`,
@@ -290,6 +305,11 @@ Everything lands under `results/` (gitignored), written atomically:
   global, drift), `cells.csv` (one row per target cell with its verdict), and
   the figures `label.png` and `quantity.png` (nominal vs measured per axis) and
   `feasibility.png` (deviation from target per cell, failing cells crossed)
+- `analysis/training_runs.csv` - one row per completed run with its partition's
+  realized label-HD and quantity-HD; `analysis/training_summary.csv` - one row per
+  condition (a config without its runtime section): mean and sample sd across
+  trials of `final_acc`, `best_acc` and `rta`, mean realized HD, and
+  `rta_of_mean_curve` (RTA of the trials' mean accuracy curve)
 
 Partitions are addressed by the fields that determine the split, so training
 knobs never invalidate a cached partition, and FedAvg and FedProx at the same
@@ -491,5 +511,13 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     in a fresh process (real CIFAR-10 on the GPU, strict determinism)
   - Real CIFAR-10, K = 30, natural_per_class alpha = 0.5, 2 rounds x 10 epochs: 2.46
     ms/step for FedAvg and 2.90 for FedProx, about 13 and 15 min per 40 x 10 run
+- Metrics and logging: per-round test accuracy with a round-0 row for the untrained
+  model, `rta` as the first round reaching 90% of the run's own best accuracy (the
+  source paper's metric, checked against arXiv:2503.17070 v1 and v2), a
+  sample-weighted train loss, a per-client log, and `analysis.training_summary` for
+  final accuracy and RTA as mean and sd across trials
+  - Real CIFAR-10, K = 30, natural_per_class alpha = 0.5, 5 rounds x 2 epochs, trials
+    0-2: final accuracy 0.396 +/- 0.004 (FedAvg) and 0.402 +/- 0.005 (FedProx mu =
+    0.01), rta 4 in every run. A short check that the records work, not a result
 - Next: RQ2 and RQ3 levels chosen from the validation tables; capped vs
   uncapped for the RQ2 natural arm

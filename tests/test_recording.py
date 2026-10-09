@@ -5,13 +5,16 @@ import subprocess
 import sys
 import textwrap
 
+import numpy as np
 import pytest
 
 from experiments.config import config_hash, from_dict, load_config, to_dict
 from experiments.recording import (
+    RTA_FRACTION,
     RunRecorder,
     completed_runs,
     read_jsonl,
+    rounds_to_accuracy,
     runs_path,
     skip_if_exists,
 )
@@ -52,10 +55,11 @@ def smoke_config(**runtime):
     return from_dict(data)
 
 
-def dummy_run(config, out_dir, rounds=3, rta_target=None, fail_with=None):
-    with RunRecorder(config, "pid123", out_dir, rta_target=rta_target) as rec:
-        for r in range(1, rounds + 1):
-            rec.log_round(r, 0.1 * r, 1.0 / r, 2.0 / r, 0.5)
+def dummy_run(config, out_dir, rounds=3, fail_with=None, accuracies=None):
+    accuracies = accuracies or [0.1 * r for r in range(1, rounds + 1)]
+    with RunRecorder(config, "pid123", out_dir) as rec:
+        for r, acc in enumerate(accuracies, 1):
+            rec.log_round(r, acc, 1.0 / r, 2.0 / r, 0.5)
             if fail_with is not None and r == 2:
                 raise fail_with
     return rec
@@ -98,14 +102,70 @@ def test_resolved_config_is_self_describing(tmp_path):
     assert dumped == config
 
 
-def test_rta_is_first_round_reaching_target(tmp_path):
-    dummy_run(smoke_config(), tmp_path, rounds=5, rta_target=0.25)
-    assert read_jsonl(runs_path(tmp_path))[-1]["rta"] == 3
+def test_rta_is_first_round_reaching_90_percent_of_the_runs_best(tmp_path):
+    # best 0.60, threshold 0.54: round 3 (0.53) misses, round 4 (0.55) reaches it
+    dummy_run(smoke_config(), tmp_path, accuracies=[0.2, 0.4, 0.53, 0.55, 0.60, 0.58])
+    assert read_jsonl(runs_path(tmp_path))[-1]["rta"] == 4
 
 
-def test_rta_is_null_when_never_reached(tmp_path):
-    dummy_run(smoke_config(), tmp_path, rounds=3, rta_target=0.99)
-    assert read_jsonl(runs_path(tmp_path))[-1]["rta"] is None
+def test_rounds_to_accuracy():
+    assert rounds_to_accuracy([0.2, 0.4, 0.53, 0.55, 0.60, 0.58]) == 4
+    assert rounds_to_accuracy([0.5, 0.1, 0.52]) == 1  # the first round reaching it, dips or not
+    assert rounds_to_accuracy([0.3, 0.5], fraction=1.0) == 2
+    assert rounds_to_accuracy([0.3, 0.5], reference=0.8) is None  # an explicit max not reached
+    assert rounds_to_accuracy([0.3, 0.5, 0.72], reference=0.8) == 3
+    assert rounds_to_accuracy([]) is None
+    assert rounds_to_accuracy(np.array([0.1, 0.2])) == 2
+    for fraction in (0.0, 1.5):
+        with pytest.raises(ValueError, match="fraction"):
+            rounds_to_accuracy([0.5], fraction=fraction)
+
+
+def test_rta_counts_an_exact_tie_with_the_threshold():
+    """0.9 * 6610/10000 is 5949/10000 exactly, but not in floating point."""
+    best, tie = 6610 / 10000, 5949 / 10000
+    assert tie < RTA_FRACTION * best  # the naive comparison would miss it
+    assert rounds_to_accuracy([0.1, tie, best]) == 2
+    below = 5948 / 10000  # one test sample short
+    assert rounds_to_accuracy([0.1, below, best]) == 3
+
+
+def test_round_zero_is_written_but_counts_for_nothing(tmp_path):
+    with RunRecorder(smoke_config(), "pid123", tmp_path) as rec:
+        rec.log_initial(0.95, 0.1)
+        rec.log_round(1, 0.2, 2.0, 2.5, 0.5)
+        rec.log_round(2, 0.3, 1.5, 2.0, 0.5)
+        with pytest.raises(RuntimeError, match="round 0"):
+            rec.log_initial(0.1, 2.3)
+    final = read_jsonl(runs_path(tmp_path))[-1]
+    assert (final["final_acc"], final["best_acc"], final["rta"]) == (0.3, 0.3, 2)
+
+    history = tmp_path / "runs" / config_hash(smoke_config()) / "history.csv"
+    with history.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert [r["round"] for r in rows] == ["0", "1", "2"]
+    assert rows[0] == {
+        "round": "0",
+        "global_test_acc": "0.95",
+        "global_test_loss": "0.1",
+        "train_loss": "",
+        "round_wall_s": "",
+    }
+
+
+def test_clients_csv_has_a_row_per_trained_client(tmp_path):
+    with RunRecorder(smoke_config(), "pid123", tmp_path) as rec:
+        rec.log_round(1, 0.2, 2.0, 2.5, 0.5)
+        rec.log_clients(1, (0, 2), (100, 40), (2.25, 3.0), (20, 8))
+        with pytest.raises(ValueError):
+            rec.log_clients(2, (0, 2), (100,), (2.0, 2.9), (20, 8))  # lengths differ
+    clients = tmp_path / "runs" / config_hash(smoke_config()) / "clients.csv"
+    with clients.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert rows == [
+        {"round": "1", "client": "0", "num_samples": "100", "train_loss": "2.25", "steps": "20"},
+        {"round": "1", "client": "2", "num_samples": "40", "train_loss": "3.0", "steps": "8"},
+    ]
 
 
 def test_failure_is_recorded_and_reraised(tmp_path):

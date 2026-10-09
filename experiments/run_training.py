@@ -35,9 +35,13 @@ FedProx "aggregates local model updates from all devices" (Section 3.4; section
 numbers as in v2). So client_fraction 1.0 has every client train in every round.
 
 Each round goes to `experiments.recording.RunRecorder`: a history.csv row with
-the global model's test accuracy and loss, the unweighted mean of the trained
-clients' final-epoch training losses, and the round's wall time; runs.jsonl gets
-a row at the start and one at the end. rta is left null. A run that already
+the global model's test accuracy and loss, the trained clients' final-epoch
+training losses averaged by sample count (`train_loss`), and the round's wall
+time, and a clients.csv row per trained client (size, final-epoch loss, steps).
+history.csv starts with round 0, the initialised model's test accuracy and loss,
+which no metric counts. runs.jsonl gets a row at the start and one at the end,
+with final_acc, best_acc and rta: rounds to reach 90% of the run's own best
+accuracy (`experiments.recording.rounds_to_accuracy`). A run that already
 completed (same config_hash in runs.jsonl) is skipped unless --force is given; a
 failed or killed run is trained again. A sweep loads each dataset once, keeps it
 on the device for every run, and stops at the first run that fails.
@@ -77,7 +81,7 @@ from experiments.seeding import configure_torch, seeds_for
 from experiments.tensors import TensorData, load_tensors
 from federated.aggregation import fedavg
 from federated.data import FederatedData
-from federated.loop import MakeOptimizer, RoundResult, run_federated
+from federated.loop import MakeOptimizer, RoundResult, evaluate, run_federated
 from models.networks import build_model
 
 OPTIMIZERS = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}  # mirrors config.OPTIMIZERS
@@ -98,9 +102,17 @@ def proximal_mu(federated) -> float | None:
     return federated.mu if federated.algorithm == "fedprox" else None
 
 
-def mean_client_train_loss(result: RoundResult) -> float:
-    """Unweighted mean, over the clients that trained, of their final-epoch losses."""
-    return sum(result.client_train_loss) / len(result.client_train_loss)
+def train_loss(result: RoundResult) -> float:
+    """The trained clients' final-epoch losses averaged with weights n_k / sum n_j.
+
+    This is the mean per-sample loss over every sample that was trained on, the
+    same weighting as FedAvg's objective f(w) = sum_k (n_k / n) F_k(w) (McMahan et
+    al. 2017, Section 1, "Federated Optimization") and as Flower 1.36.0's default
+    aggregation of training metrics (weighted by "num-examples"). clients.csv keeps
+    each client's own loss.
+    """
+    total = sum(result.client_sizes)
+    return sum(n * loss for n, loss in zip(result.client_sizes, result.client_train_loss)) / total
 
 
 def partition_problem(config: ExperimentConfig) -> str | None:
@@ -153,14 +165,18 @@ def train(
     federated = config.federated
 
     with RunRecorder(config, pid) as recorder:
+        recorder.log_initial(*evaluate(model, tensors.test_x, tensors.test_y))
 
         def record(result: RoundResult) -> None:
             recorder.log_round(
+                result.round, result.test_acc, result.test_loss, train_loss(result), result.wall_s
+            )
+            recorder.log_clients(
                 result.round,
-                result.test_acc,
-                result.test_loss,
-                mean_client_train_loss(result),
-                result.wall_s,
+                result.clients,
+                result.client_sizes,
+                result.client_train_loss,
+                result.client_steps,
             )
             if on_round is not None:
                 on_round(result)

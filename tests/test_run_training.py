@@ -23,22 +23,23 @@ from experiments.recording import (
     partition_id,
     read_jsonl,
     record_infeasible,
+    rounds_to_accuracy,
     runs_path,
     skip_if_exists,
 )
 from experiments.run_partition import generate_partition
 from experiments.run_training import (
     PartitionUnavailable,
-    mean_client_train_loss,
     optimizer_factory,
     proximal_mu,
     train,
     train_all,
+    train_loss,
 )
 from experiments.seeding import seeds_for
 from federated.aggregation import fedavg
 from federated.data import FederatedData
-from federated.loop import RoundResult, run_federated
+from federated.loop import RoundResult, evaluate, run_federated
 from models.networks import build_model
 
 N_TRAIN, N_TEST, CLASSES = 90, 30, 3
@@ -101,8 +102,8 @@ def numbers(results):
     ]
 
 
-def history(config):
-    path = Path(config.runtime.out_dir) / "runs" / config_hash(config) / "history.csv"
+def history(config, name="history.csv"):
+    path = Path(config.runtime.out_dir) / "runs" / config_hash(config) / name
     with path.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
 
@@ -111,7 +112,7 @@ def history(config):
 
 
 def test_a_run_is_recorded_end_to_end(tmp_path):
-    config = toy_config(tmp_path)
+    config = toy_config(tmp_path, {"federated.rounds": 3})
     results = train(config)
 
     rows = read_jsonl(runs_path(tmp_path))
@@ -120,16 +121,55 @@ def test_a_run_is_recorded_end_to_end(tmp_path):
     assert final["partition_id"] == partition_id(config, seeds_for(config).partition)
     assert final["final_acc"] == results[-1].test_acc
     assert final["best_acc"] == max(r.test_acc for r in results)
-    assert final["rta"] is None
+    assert final["rta"] == rounds_to_accuracy([r.test_acc for r in results])
+    assert final["rta"] is not None
     assert skip_if_exists(config)
 
-    rounds = history(config)
-    assert [int(row["round"]) for row in rounds] == [1, 2]
-    for row, result in zip(rounds, results):
+    initial, *rounds = history(config)
+    assert [int(row["round"]) for row in rounds] == [1, 2, 3]
+    for row, result in zip(rounds, results, strict=True):
         assert float(row["global_test_acc"]) == result.test_acc
         assert float(row["global_test_loss"]) == result.test_loss
-        assert float(row["mean_client_train_loss"]) == mean_client_train_loss(result)
+        assert float(row["train_loss"]) == train_loss(result)
         assert float(row["round_wall_s"]) == result.wall_s
+
+    clients = history(config, "clients.csv")
+    expected = [
+        (r.round, *client)
+        for r in results
+        for client in zip(r.clients, r.client_sizes, r.client_train_loss, r.client_steps)
+    ]
+    assert [
+        (int(c["round"]), int(c["client"]), int(c["num_samples"]), float(c["train_loss"]))
+        + (int(c["steps"]),)
+        for c in clients
+    ] == expected
+
+
+def test_round_zero_is_the_untrained_model(tmp_path):
+    """Round 0 evaluates the initialised model; it has no training columns."""
+    config = toy_config(tmp_path)
+    train(config)
+    seeds = seeds_for(config)
+    data = tensors.load_tensors(config.dataset)
+    model = build_model(config.model, data.input_shape, seeds.init)
+    acc, loss = evaluate(model, data.test_x, data.test_y)
+
+    initial = history(config)[0]
+    assert initial["round"] == "0"
+    assert float(initial["global_test_acc"]) == acc
+    assert float(initial["global_test_loss"]) == loss
+    assert initial["train_loss"] == "" and initial["round_wall_s"] == ""
+
+
+def test_round_zero_counts_for_no_metric(tmp_path, monkeypatch):
+    """An untrained model better than every round is still not final, best or rta."""
+    config = toy_config(tmp_path, {"federated.rounds": 3})
+    monkeypatch.setattr(run_training, "evaluate", lambda model, x, y: (0.99, 0.01))
+    results = train(config)
+    final = read_jsonl(runs_path(tmp_path))[-1]
+    assert final["best_acc"] == max(r.test_acc for r in results) < 0.99
+    assert final["rta"] == rounds_to_accuracy([r.test_acc for r in results]) >= 1
 
 
 @pytest.mark.parametrize("mu", [None, 0.1], ids=["fedavg", "fedprox"])
@@ -220,9 +260,9 @@ def test_proximal_mu_is_none_for_fedavg():
     assert proximal_mu(fedprox.federated) == 1.0
 
 
-def test_mean_client_train_loss_is_unweighted():
+def test_train_loss_is_weighted_by_client_size():
     result = RoundResult(1, 0.5, 1.0, (0, 1), (10, 30), (1.0, 3.0), (1, 2), (), 0.1)
-    assert mean_client_train_loss(result) == 2.0
+    assert train_loss(result) == (10 * 1.0 + 30 * 3.0) / 40
 
 
 # --- the partition gate ------------------------------------------------------------
@@ -339,8 +379,9 @@ def run_cli(*args):
 
 
 def trained_numbers(config):
-    """history.csv without wall times, and the final runs.jsonl row."""
+    """history.csv without wall times, clients.csv, and the final runs.jsonl row."""
     rounds = [{k: v for k, v in row.items() if k != "round_wall_s"} for row in history(config)]
+    rounds.append(history(config, "clients.csv"))
     final = [r for r in read_jsonl(runs_path(config.runtime.out_dir)) if r["trial"] == 1][-1]
     return rounds, final
 
@@ -367,10 +408,10 @@ def test_cli_on_cifar10_is_bit_exact_whatever_ran_before(tmp_path):
     swept_rounds, swept = trained_numbers(cifar10_cell(sweep_dir, 1))
     alone_rounds, alone_row = trained_numbers(alone)
     assert swept_rounds == alone_rounds
-    assert float(alone_rounds[0]["global_test_acc"]) > 0.15  # above chance (0.1): it learned
+    assert float(alone_rounds[1]["global_test_acc"]) > 0.15  # above chance (0.1): it learned
     for row in (swept, alone_row):
         assert row["status"] == "completed" and row["deterministic"] is True
-        assert row["gpu_name"] and row["rta"] is None
+        assert row["gpu_name"] and row["rta"] == 1
     assert swept["partition_id"] == alone_row["partition_id"]
     assert json.dumps(swept["final_acc"]) == json.dumps(alone_row["final_acc"])
 
