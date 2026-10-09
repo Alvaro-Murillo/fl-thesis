@@ -15,6 +15,9 @@ What the loop leaves to its caller:
     aggregate       the server rule, (global_state, updates) -> new global state
     make_optimizer  called once per client per round, so no optimizer state
                     carries over between rounds
+    proximal_mu     None for FedAvg; for FedProx (Li et al. 2020), the mu of the
+                    proximal term every client adds to its local objective
+                    (`federated/proximal.py`)
     on_round        receives each round's RoundResult, e.g. to write it to disk
 
 Randomness. Each client's batch order comes from its own stream, keyed by
@@ -42,6 +45,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from federated.data import FederatedData
+from federated.proximal import add_proximal_gradient, check_mu, global_parameters
 
 State = dict[str, torch.Tensor]
 
@@ -117,13 +121,24 @@ def local_train(
     batch_size: int,
     make_optimizer: MakeOptimizer,
     generator: torch.Generator,
+    proximal_mu: float | None = None,
 ) -> tuple[float, int]:
     """Train `model` in place on one client's data. Returns (final-epoch loss, steps).
 
     The optimizer is built here, so every call starts from a fresh optimizer state.
+
+    With `proximal_mu` set, every step follows FedProx's objective, the batch's
+    cross-entropy plus (mu / 2) * ||w - w_global||^2, where w_global is the model's
+    parameters on entry: the term's gradient is added after backward()
+    (`federated/proximal.py`). The returned loss is the cross-entropy alone, so
+    FedAvg and FedProx clients report the same quantity. With `proximal_mu` None
+    no term is applied.
     """
+    if proximal_mu is not None:
+        check_mu(proximal_mu)
     model.train()
     optimizer = make_optimizer(model.parameters())
+    anchor = None if proximal_mu is None else global_parameters(model)
     steps = 0
     epoch_loss = torch.zeros((), device=data.device)
     for _ in range(epochs):
@@ -132,6 +147,8 @@ def local_train(
             optimizer.zero_grad(set_to_none=True)
             loss = F.cross_entropy(model(x), y)
             loss.backward()
+            if anchor is not None:
+                add_proximal_gradient(model, anchor, proximal_mu)
             optimizer.step()
             epoch_loss += loss.detach() * len(y)
             steps += 1
@@ -167,13 +184,20 @@ def run_federated(
     aggregate: Aggregate,
     train_seed: int,
     client_fraction: float = 1.0,
+    proximal_mu: float | None = None,
     on_round: Callable[[RoundResult], None] | None = None,
     eval_batch_size: int = 1000,
 ) -> list[RoundResult]:
-    """Run `rounds` rounds; `model` ends holding the final global weights."""
+    """Run `rounds` rounds; `model` ends holding the final global weights.
+
+    `proximal_mu` None runs FedAvg's clients; a value runs FedProx's, each client
+    adding the proximal term around the global weights it received that round.
+    """
     devices = {p.device for p in model.parameters()} | {data.device, test_x.device}
     if len(devices) != 1:
         raise ValueError(f"model, training data and test data must share a device, got {devices}")
+    if proximal_mu is not None:
+        check_mu(proximal_mu)
     test_y = test_y.long()
     worker = copy.deepcopy(model)
     results = []
@@ -194,6 +218,7 @@ def run_federated(
                 batch_size=batch_size,
                 make_optimizer=make_optimizer,
                 generator=client_generator(train_seed, rnd, k),
+                proximal_mu=proximal_mu,
             )
             updates.append(ClientUpdate(k, data.size(k), snapshot(worker), loss, steps))
         if not updates:

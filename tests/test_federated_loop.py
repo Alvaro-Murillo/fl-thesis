@@ -2,8 +2,9 @@
 
 The loop takes the server rule as a parameter. These tests use a plain unweighted
 mean as a stand-in: it is not FedAvg's sample-weighted average, only something
-that lets the loop run. The slow GPU rerun test at the end uses FedAvg itself
-(`federated/aggregation.py`, tested in test_aggregation.py).
+that lets the loop run. The slow GPU tests at the end use FedAvg itself
+(`federated/aggregation.py`, tested in test_aggregation.py), with and without
+FedProx's proximal term (tested in test_proximal.py).
 """
 
 import subprocess
@@ -366,7 +367,7 @@ STRICT_GPU_RUN = textwrap.dedent("""
     results = run_federated(
         model, data, test_x, test_y, rounds=2, local_epochs=1, batch_size=64,
         make_optimizer=lambda p: torch.optim.Adam(p, lr=0.001),
-        aggregate=fedavg, train_seed=seeds.train,
+        aggregate=fedavg, train_seed=seeds.train, proximal_mu={mu!r},
     )
     digest = hashlib.sha256()
     for name, value in sorted(model.state_dict().items()):
@@ -378,19 +379,31 @@ STRICT_GPU_RUN = textwrap.dedent("""
 """)
 
 
+def strict_gpu_run(mu):
+    """Output lines of one fresh-process run: strict flag, state digest, per-round numbers."""
+    root = Path(__file__).resolve().parents[1]
+    script = STRICT_GPU_RUN.format(root=str(root), mu=mu)
+    done = subprocess.run(
+        [sys.executable, "-c", script], cwd=root, capture_output=True, text=True, timeout=600
+    )
+    assert done.returncode == 0, done.stderr
+    lines = done.stdout.splitlines()
+    assert lines[0] == "True"  # strict mode was really on
+    return lines
+
+
 @pytest.mark.slow
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA device")
-def test_strict_gpu_reruns_are_bit_exact_on_cifar10():
+@pytest.mark.parametrize("mu", [None, 0.01], ids=["fedavg", "fedprox"])
+def test_strict_gpu_reruns_are_bit_exact_on_cifar10(mu):
     """Two fresh processes, real CIFAR-10, K = 30 unequal clients, 2 rounds: same bytes."""
-    root = Path(__file__).resolve().parents[1]
-    script = STRICT_GPU_RUN.format(root=str(root))
-    outputs = []
-    for _ in range(2):
-        done = subprocess.run(
-            [sys.executable, "-c", script], cwd=root, capture_output=True, text=True, timeout=600
-        )
-        assert done.returncode == 0, done.stderr
-        outputs.append(done.stdout.splitlines())
-    first, second = outputs
-    assert first[0] == "True"  # strict mode was really on
-    assert first == second
+    assert strict_gpu_run(mu) == strict_gpu_run(mu)
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA device")
+def test_fedprox_with_mu_zero_is_fedavg_on_cifar10():
+    """FedProx's sanity check in the real setting: mu = 0 gives FedAvg's bytes."""
+    fedavg_run, fedprox_run = strict_gpu_run(None), strict_gpu_run(0.0)
+    assert fedavg_run == fedprox_run
+    assert fedavg_run != strict_gpu_run(0.01)

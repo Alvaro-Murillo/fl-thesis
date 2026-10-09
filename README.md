@@ -44,6 +44,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
     client and round, a pluggable server rule, per-round test evaluation
   - aggregation.py - FedAvg's server rule, the sample-weighted average of the client
     models (adapted code)
+  - proximal.py - FedProx's proximal term, its gradient mu * (w - w_global) added to
+    each client's gradients before the optimizer step (adapted code)
   - centralized.py - the whole training set as one client with one optimizer: the
     centralized baseline and the models' sanity check
 - experiments/ - config schema, seeding, recording, runner scripts
@@ -350,6 +352,10 @@ Adapted code (MIT and Apache-2.0; full licence texts in `LICENSES/`):
   weighted average behind Flower's FedAvg strategy, ported to torch state dicts.
   It gives bit-identical results to Flower's function; Flower itself is not
   imported.
+- `federated/proximal.py` `add_proximal_gradient` - from the FedProx authors'
+  own code, `PerturbedGradientDescent` in github.com/litian96/FedProx (MIT,
+  Copyright (c) 2019 Tian Li): the perturbed gradient grad + mu * (w - w_global),
+  kept as the gradient that Adam steps on, in torch instead of TensorFlow.
 
 Each adapted function carries a header with source, version, licence and
 changes.
@@ -444,6 +450,9 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   Glorot-uniform weights with zero biases, inputs scaled to [0, 1]
   - Centralized CNN on CIFAR-10 (Adam 0.001, batch 64, strict determinism, trials
     0-2): test accuracy 0.702-0.711 after 10 epochs and 0.714-0.725 at best
+    (epochs 14-16). In trial 0 the test loss is lowest at epoch 11 and rises
+    after it. 2.4 ms/step with per-epoch evaluation; a rerun is bit-exact
+  - The DNN is checked on a synthetic task only; no tabular dataset is loaded yet
 - FedAvg server rule: sum_k (n_k / sum_j n_j) * w_k over the clients that trained
   (McMahan et al. 2017, Algorithm 1), adapted from Flower 1.36.0
   - Bit-identical to Flower's `aggregate_arrayrecords` on CPU and CUDA (30 CNN
@@ -453,8 +462,16 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     0.52 under FedAvg and 0.44 under an unweighted mean. A short check that the
     rule works, not a result
   - GPU reruns with FedAvg are bit-exact
-    (epochs 14-16). In trial 0 the test loss is lowest at epoch 11 and rises
-    after it. 2.4 ms/step with per-epoch evaluation; a rerun is bit-exact
-  - The DNN is checked on a synthetic task only; no tabular dataset is loaded yet
+- FedProx: each client adds (mu / 2) * ||w - w_global||^2 to its local objective
+  (Li et al. 2020); the server rule stays FedAvg's. Set by `proximal_mu` in the
+  loop, None for FedAvg
+  - The term's gradient mu * (w - w_global) is added after backward(), as in the
+    FedProx authors' code. Adding the term to the loss instead (Flower's FedProx
+    baseline) gives the same gradient up to rounding but ran at 5.1 ms/step
+  - mu = 0 gives FedAvg's bytes exactly, on the toy task and on real CIFAR-10 on
+    the GPU; FedProx reruns are bit-exact
+  - Real CIFAR-10, K = 30, strict determinism: 2.70 ms/step against FedAvg's 2.34,
+    about 14 min per 40-round x 10-epoch run
+  - mu is not chosen yet; the source paper's grid is {0, 0.001, 0.01, 0.1, 1, 10, 100}
 - Next: RQ2 and RQ3 levels chosen from the validation tables; capped vs
   uncapped for the RQ2 natural arm
