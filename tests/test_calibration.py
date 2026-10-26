@@ -117,9 +117,15 @@ def test_infeasible_alphas_are_kept_but_not_fitted():
 
 
 COMMITTED_ALPHA_CURVES = ("96fb06debf", "d85a67a9c5", "34b3a4dc67", "da8b82c519")
+# The 20-trial alpha curves the RQ2 and RQ3 label levels are read from (CIFAR-10, K = 30).
+TWENTY_TRIAL_ALPHA_CURVES = {
+    "147e58d391": ("natural_per_class", "none", 10),
+    "146de82d74": ("natural_per_class", "niid_bench", 10),
+    "90f8f1dd9b": ("pure_label", "none", 0),
+}
 
 
-@pytest.mark.parametrize("cid", COMMITTED_ALPHA_CURVES)
+@pytest.mark.parametrize("cid", [*COMMITTED_ALPHA_CURVES, *TWENTY_TRIAL_ALPHA_CURVES])
 def test_committed_alpha_curve_ids_are_unchanged(cid):
     """The committed alpha curves keep their IDs and read as alpha / label-HD curves."""
     cal = load_calibration(cid)
@@ -136,6 +142,18 @@ def test_committed_alpha_curve_ids_are_unchanged(cid):
     )
     alpha = alpha_for_target(cal, sum(cal["label_hd_range"]) / 2)
     assert cal["alphas"][0] < alpha < cal["alphas"][-1]
+
+
+@pytest.mark.parametrize("cid", TWENTY_TRIAL_ALPHA_CURVES)
+def test_twenty_trial_alpha_curves_are_the_grid_trials_from_a_clean_tree(cid):
+    """Trials 0-19 with the grid's own seeds, so trials 0-2 are the trained partitions."""
+    cal = load_calibration(cid)
+    mode, size_cap, min_size_policy = TWENTY_TRIAL_ALPHA_CURVES[cid]
+    assert (cal["dataset"], cal["K"], cal["mode"]) == ("cifar10", 30, mode)
+    assert (cal["size_cap"], cal["min_size_policy"]) == (size_cap, min_size_policy)
+    assert cal["trials"] == list(range(20))
+    assert cal["seeds"] == [derive_seeds(t).partition for t in range(20)]
+    assert cal["git_dirty"] is False
 
 
 def test_every_committed_curve_id_recomputes():
