@@ -1,0 +1,45 @@
+# Pipeline check: one full run at extreme label skew, expected to fall clearly
+# below the near-IID run (config/sanity_iid.yaml). Not used by any reported
+# experiment. The partition is the stored RQ1 cell natural_per_class, uncapped,
+# alpha = 0.03, K = 30, trial 0 (label-HD 0.781, quantity-HD 0.466).
+# Standalone copy of base.yaml; only partition.alpha differs.
+
+dataset:
+  name: cifar10
+  num_classes: 10
+  root: data
+  val_split: 0.0
+
+partition:
+  mode: natural_per_class
+  K: 30
+  alpha: 0.03
+  beta: null
+  target_label_hd: null
+  target_quantity_hd: null
+  min_size_policy: 10
+  calibration_id: null
+
+model:
+  arch: cnn
+  in_channels: 3
+  num_classes: 10
+
+federated:
+  algorithm: fedavg
+  rounds: 40
+  local_epochs: 10
+  batch_size: 64
+  lr: 0.001
+  mu: 0.0
+  optimizer: adam
+  client_fraction: 1.0
+
+runtime:
+  trial: 0
+  deterministic: true
+  device: cuda
+  out_dir: results
+  partition_seed: null
+  init_seed: null
+  train_seed: null

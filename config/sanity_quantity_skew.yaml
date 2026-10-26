@@ -1,0 +1,47 @@
+# Pipeline check: one full run under heavy quantity skew, mainly to time a run
+# whose largest client holds most of the data. Not used by any reported
+# experiment. The partition is the stored cell of config/grids/quantity_skew.yaml
+# at beta = 0.0728, K = 30, trial 0 (quantity-HD 0.715, label-HD 0.147; client
+# sizes 30 to 34,141).
+# Standalone copy of base.yaml; the partition section follows that grid.
+
+dataset:
+  name: cifar10
+  num_classes: 10
+  root: data
+  val_split: 0.0
+
+partition:
+  mode: quantity_only
+  K: 30
+  alpha: null
+  beta: 0.0727895384398315
+  target_label_hd: null
+  target_quantity_hd: null
+  min_size_policy: 0
+  quantity_floor: null
+  calibration_id: null
+
+model:
+  arch: cnn
+  in_channels: 3
+  num_classes: 10
+
+federated:
+  algorithm: fedavg
+  rounds: 40
+  local_epochs: 10
+  batch_size: 64
+  lr: 0.001
+  mu: 0.0
+  optimizer: adam
+  client_fraction: 1.0
+
+runtime:
+  trial: 0
+  deterministic: true
+  device: cuda
+  out_dir: results
+  partition_seed: null
+  init_seed: null
+  train_seed: null
