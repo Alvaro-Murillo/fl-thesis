@@ -333,3 +333,23 @@ def test_an_incomplete_blocked_grid_fails_on_expansion(tmp_path, spec, error, ma
     )
     with pytest.raises(error, match=match):
         expand(grid, for_training=False)
+
+
+def test_mu_tuning_uses_the_rq3_mid_cell_at_trials_no_reported_grid_trains():
+    configs = expand(f"{GRIDS}/mu_tuning.yaml", for_training=True)
+    assert len(configs) == 7 * 2 and len({pid(c) for c in configs}) == 2
+    (cell,) = [
+        c
+        for c in rq3()
+        if (c.partition.target_label_hd, c.partition.target_quantity_hd) == (0.45, 0.35)
+        and c.runtime.trial == 0
+    ]
+    assert {(c.partition.alpha, c.partition.beta) for c in configs} == {
+        (cell.partition.alpha, cell.partition.beta)
+    }
+    reported = {c.runtime.trial for c in rq2() + rq3() + rq3("rq3_edge")}
+    assert {c.runtime.trial for c in configs} == {3, 4} and not reported & {3, 4}
+    settings = sorted({(c.federated.algorithm, c.federated.mu) for c in configs})
+    assert settings == [("fedavg", 0.0)] + [
+        ("fedprox", mu) for mu in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0)
+    ]

@@ -1,0 +1,49 @@
+# FedProx mu, tuned once at one mid-skew cell. The chosen mu is then fixed for
+# every FedProx cell of rq2.yaml and rq3.yaml; it is not re-tuned per cell.
+#
+# Cell: combined at label-HD 0.45 x quantity-HD 0.35, read off the same curves as
+# rq3.yaml (alpha 0.411593, beta 0.863361), at trials 3 and 4. The reported grids
+# train trials 0-2, so no reported run, partition or seed is used to choose mu.
+# Accuracy is measured on the CIFAR-10 test set, as in every run.
+#
+# Candidates: the source paper's grid {0.001, 0.01, 0.1, 1, 10, 100}, with FedAvg
+# as the mu = 0 reference.
+#
+# Selection rule, fixed before any run:
+#   - the mu with the highest mean final-round test accuracy over the two trials,
+#     FedAvg counting as mu = 0;
+#   - if several are within 0.01 of the top mean, the smallest of them;
+#   - best_acc and rta are not used.
+# If the rule picks mu = 0, no FedProx case can be added to the grids (fedprox
+# requires mu > 0, and mu = 0 is FedAvg bit for bit). The result then goes back to
+# the author, with the best mu > 0 under the same rule alongside.
+#
+#   python -m experiments.run_grid --grid config/grids/mu_tuning.yaml
+#   python -m experiments.run_training --grid config/grids/mu_tuning.yaml
+#
+# 7 settings x 2 trials = 14 runs over 2 partitions.
+
+base: config/base.yaml
+
+constant:
+  partition.mode: combined
+  partition.K: 30
+  partition.alpha: null
+  partition.beta: null
+  partition.min_size_policy: 0
+  partition.calibration_id: 90f8f1dd9b  # pure_label alpha curve, 20 trials
+  partition.quantity_calibration_id: 8f995f9546  # quantity_only beta curve, 20 trials
+  partition.target_label_hd: 0.45
+  partition.target_quantity_hd: 0.35
+
+cases:
+  - {federated.algorithm: fedavg}
+  - {federated.algorithm: fedprox, federated.mu: 0.001}
+  - {federated.algorithm: fedprox, federated.mu: 0.01}
+  - {federated.algorithm: fedprox, federated.mu: 0.1}
+  - {federated.algorithm: fedprox, federated.mu: 1.0}
+  - {federated.algorithm: fedprox, federated.mu: 10.0}
+  - {federated.algorithm: fedprox, federated.mu: 100.0}
+
+sweep:
+  runtime.trial: [3, 4]
