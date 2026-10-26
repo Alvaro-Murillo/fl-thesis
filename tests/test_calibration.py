@@ -299,6 +299,30 @@ def test_target_zero_is_no_skew_and_needs_no_curve():
     assert cell["partition"]["alpha"] == cell["partition"]["beta"] == NO_SKEW
 
 
+def test_no_skew_is_the_source_papers_iid_alpha_as_a_float():
+    # A float, not the int 1000: partition_id hashes alpha as JSON ("1000.0" vs "1000").
+    assert NO_SKEW == 1000.0 and isinstance(NO_SKEW, float)
+
+
+@pytest.mark.parametrize("size_cap", ["none", "niid_bench"])
+@pytest.mark.parametrize("trial", [0, 1, 2])
+def test_a_natural_cell_at_target_zero_is_the_rq1_alpha_1000_partition(size_cap, trial):
+    from experiments.recording import partition_id
+    from experiments.seeding import seeds_for
+
+    def pid(cell):
+        config = from_dict(cell)
+        return partition_id(config, seeds_for(config).partition)
+
+    rq1 = to_dict(load_config("config/base.yaml"))  # natural_per_class, K = 30, min size 10
+    rq1["partition"].update(alpha=1000.0, size_cap=size_cap)
+    rq1["runtime"]["trial"] = trial
+    target = to_dict(load_config("config/base.yaml"))
+    target["partition"].update(alpha=None, target_label_hd=0.0, size_cap=size_cap)
+    target["runtime"]["trial"] = trial
+    assert pid(resolve_targets(target)) == pid(rq1)
+
+
 def test_explicit_parameters_are_kept():
     cell = combined_cell(alpha=0.5, beta=2.0, target_label_hd=0.3, calibration_id="absent")
     cell["partition"].update(target_quantity_hd=0.3, quantity_calibration_id="absent")

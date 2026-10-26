@@ -236,7 +236,9 @@ A cell can give HD targets instead of parameters. With `alpha` null,
 names; with `beta` null, `target_quantity_hd` against the curve
 `quantity_calibration_id` names. The curve must match the cell's dataset, K
 and partitioner, or expansion fails. A target of 0 means no skew on that axis
-(concentration 1e6), since realized HD is never exactly 0. An explicit
+(`NO_SKEW`, concentration 1000.0: the source paper's IID alpha, label-HD 0.010 and
+quantity-HD 0.011 at K = 30), since realized HD is never exactly 0. A natural cell
+at target 0 is therefore the RQ1 grid's alpha = 1000 partition. An explicit
 parameter is kept, and its target then only feeds the checks below.
 
 On the quantity axis, targets are level names: every size draw is kept, each

@@ -77,7 +77,11 @@ NEVER_REDRAW = ("pure_label", "quantity_only")
 FITTED_METRIC = {"alpha": "label_hd", "beta": "quantity_hd"}
 # A target of exactly 0 resolves to this concentration, not to a value read off a
 # curve: realized HD is never 0, and the fitted ranges start near 0.01 at K = 30.
-NO_SKEW = 1e6
+# 1000 is the source paper's IID alpha. On CIFAR-10 at K = 30 (20 seeds) it gives
+# label-HD 0.010 and quantity-HD 0.011. It is a float on purpose: partition_id
+# hashes alpha as JSON, and the RQ1 grid recorded its alpha = 1000 cells as 1000.0,
+# so a natural cell at target 0 reuses those partitions.
+NO_SKEW = 1000.0
 # The mode whose alpha curve a mode's label-HD targets are read from, where not its own.
 LABEL_CURVE_MODE = {"combined": "pure_label"}
 # (parameter, target field, curve field) for the two axes.
