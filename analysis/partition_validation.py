@@ -52,6 +52,7 @@ AI assistance: drafted with Claude Code (Anthropic) from the author's specificat
 from __future__ import annotations
 
 import argparse
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -576,7 +577,8 @@ def feasibility_figure(cells: pd.DataFrame, path: Path) -> None:
     ]
     if not widths:
         return
-    fig = plt.figure(figsize=(0.55 * sum(widths) + 3.0, 6.0), dpi=150, facecolor=SURFACE)
+    width = 0.55 * sum(widths) + 3.0  # inches
+    fig = plt.figure(figsize=(width, 6.0), dpi=150, facecolor=SURFACE)
     grid = fig.add_gridspec(
         2,
         len(widths) + 1,  # the last column holds the colour scale
@@ -585,9 +587,9 @@ def feasibility_figure(cells: pd.DataFrame, path: Path) -> None:
         hspace=0.06,
         wspace=0.25,
         left=0.08,
-        right=0.93,
-        bottom=0.17,
-        top=0.88,
+        right=1 - 0.95 / width,  # room for the colour scale's tick labels and its label
+        bottom=0.19,
+        top=0.86,
     )
     column, mesh = 0, None
 
@@ -637,23 +639,40 @@ def feasibility_figure(cells: pd.DataFrame, path: Path) -> None:
     bar.ax.tick_params(colors=SECONDARY, labelsize=7)
     bar.outline.set_visible(False)
     fig.suptitle(
-        "Feasibility map: cells show realized - target label-HD over the trained trials; "
-        "the level strip shows the 20-seed mean realized - target quantity-HD",
+        _wrap(
+            "Feasibility map: cells show realized - target label-HD over the trained trials; "
+            "the level strip shows the 20-seed mean realized - target quantity-HD",
+            width,
+            9,
+        ),
         color=INK,
         fontsize=9,
         x=0.02,
+        y=0.985,
         ha="left",
+        va="top",
     )
     fig.text(
         0.02,
-        0.005,
-        f"× = fails: a trained partition outside ±{FEASIBILITY_TOLERANCE} of its label target, "
-        f"or a quantity level whose 20-seed mean is outside ±{FEASIBILITY_TOLERANCE}. "
-        "Black lines on the scale mark the tolerance.",
+        0.01,
+        _wrap(
+            f"× = fails: a trained partition outside ±{FEASIBILITY_TOLERANCE} of its label "
+            f"target, or a quantity level whose 20-seed mean is outside "
+            f"±{FEASIBILITY_TOLERANCE}. Black lines on the scale mark the tolerance.",
+            width,
+            7,
+        ),
         color=SECONDARY,
         fontsize=7,
+        va="bottom",
     )
     _save(fig, path)
+
+
+def _wrap(text: str, figure_width: float, fontsize: float) -> str:
+    """`text` broken into lines that fit across the figure, 0.02 in from each side."""
+    usable = 0.96 * figure_width * 72  # points
+    return textwrap.fill(text, width=int(usable / (0.6 * fontsize)))
 
 
 # --- report -----------------------------------------------------------------
