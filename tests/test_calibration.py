@@ -375,7 +375,7 @@ def test_grid_expansion_resolves_targets(tmp_path, target_curves):
         f"  partition.target_quantity_hd: [0.0, {t_quantity}]\n",
         encoding="utf-8",
     )
-    configs = expand(grid, calibration_dir=directory)
+    configs = expand(grid, for_training=False, calibration_dir=directory)
     resolved = {(c.partition.alpha, c.partition.beta) for c in configs}
     alpha, beta = alpha_for_target(label, t_label), beta_for_target(quantity, t_quantity)
     assert resolved == {(NO_SKEW, NO_SKEW), (NO_SKEW, beta), (alpha, NO_SKEW), (alpha, beta)}

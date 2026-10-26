@@ -89,7 +89,8 @@ Generate a partition (cached by `partition_id`; re-running is a no-op):
     python -m experiments.run_partition --config config/smoke.yaml
 
 Generate every partition in a grid (labels load once; a killed sweep resumes
-where it stopped; grids marked `status: blocked` are refused):
+where it stopped; `partition_only` and blocked grids are generated like any
+other, and only training refuses them):
 
     python -m experiments.run_grid --grid config/grids/rq1.yaml
 
@@ -217,12 +218,22 @@ null for the modes that draw no per-client mix.
 
 ## Grid files
 
-    base      complete config; every field not swept comes from it
-    constant  dotted overrides applied to every cell
-    cases     optional list of override sets, crossed with the sweep - for
-              settings that only make sense together (size_cap is per-class only)
-    sweep     dotted key -> list of values; cells are the cartesian product
-    status    `blocked` makes the grid unrunnable
+    base            complete config; every field not swept comes from it
+    constant        dotted overrides applied to every cell
+    cases           optional list of override sets, crossed with the sweep - for
+                    settings that only make sense together (size_cap is per-class only)
+    sweep           dotted key -> list of values; cells are the cartesian product.
+                    Required: a grid without one is refused, so a stub never expands
+                    to its base config's cell
+    partition_only  `true`: the partitions are made and checked, never trained
+    status          `blocked` (with `blocked_on`): the partitions can be made and
+                    checked, but training waits for what `blocked_on` names
+
+Every caller of `experiments.grid.expand` says what it expands for:
+`for_training=True` (the training runner only) refuses a `partition_only` or
+blocked grid, and the partition and analysis tools pass `for_training=False`. A
+grid whose cells are incomplete fails on expansion either way: an alpha with no
+target to resolve it from, a target with no curve, or a level that is not a number.
 
 The RQ1 grid is 3 cases (per-class uncapped, per-class niid_bench, per-client)
 x 10 alphas x K in {10, 30, 100} x 3 trials = 270 partitions, about 40 s of CPU.

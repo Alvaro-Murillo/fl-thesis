@@ -1,6 +1,7 @@
 # Deliberate quantity skew: quantity_only (MinSize-Dirichlet) across beta.
 #
 # Partition-only: no training, no GPU, fully regenerable from partitions.jsonl.
+# `partition_only: true` makes the training runner refuse the grid.
 # 30 betas x 3 client counts x 3 trials = 270 partitions. K = 30 is the
 # headline; K = 10 and 100 match the RQ1 robustness panel.
 #
@@ -14,6 +15,8 @@
 # quantity_floor null = FedArtML's 3 * num_classes + 1 (31 on CIFAR-10).
 # min_size_policy must be 0 and alpha null: this mode never redraws and draws
 # no label mix.
+
+partition_only: true
 
 base: config/base.yaml
 

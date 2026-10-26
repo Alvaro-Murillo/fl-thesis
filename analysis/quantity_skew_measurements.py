@@ -79,7 +79,7 @@ TARGETS = (
 
 def grid_rows() -> pd.DataFrame:
     """The latest partitions.jsonl row for every quantity_skew grid cell."""
-    configs = expand(GRID)
+    configs = expand(GRID, for_training=False)
     out_dir = configs[0].runtime.out_dir
     latest = {r["partition_id"]: r for r in read_jsonl(Path(out_dir) / "partitions.jsonl")}
     pids = [partition_id(c, seeds_for(c).partition) for c in configs]

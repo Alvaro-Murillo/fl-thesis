@@ -4,7 +4,8 @@
 
 Labels are loaded once per dataset. Cached cells (an .npz, or an infeasible
 row with the same redraw budget) are skipped unless --force is passed, so a
-killed sweep resumes where it stopped. Blocked grids are refused.
+killed sweep resumes where it stopped. Partition-only and blocked grids are
+generated like any other: only training refuses them (`experiments.grid`).
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
@@ -27,7 +28,7 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    configs = expand(args.grid)
+    configs = expand(args.grid, for_training=False)
     labels = {}
     generated = skipped = infeasible = 0
     for i, config in enumerate(configs, 1):

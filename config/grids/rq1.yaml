@@ -1,6 +1,7 @@
 # RQ1 - the quantity-skew byproduct of standard Dirichlet label partitioning.
 #
 # Partition-only: no training, no GPU, fully regenerable from partitions.jsonl.
+# `partition_only: true` makes the training runner refuse the grid.
 # 3 cases x 10 alphas x 3 client counts x 3 trials = 270 partitions. K = 30 is
 # the headline setting; K = 10 and 100 show how the byproduct scales with K.
 #
@@ -13,6 +14,8 @@
 # Cells whose min-size redraw budget runs out (expected at small alpha, K=100)
 # are recorded as status `infeasible_min_size` rather than dropped: that the
 # common min_size=10 convention cannot be met there is itself an RQ1 finding.
+
+partition_only: true
 
 base: config/base.yaml
 

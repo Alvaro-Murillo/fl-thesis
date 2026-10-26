@@ -8,6 +8,8 @@ be in the store (`experiments.run_partition`, `experiments.run_grid`), so every
 partition is generated, and can be validated, before any GPU time is spent. A
 grid is checked as a whole before its first run: one missing partition, or one
 recorded as infeasible, stops the sweep before anything is trained or written.
+A grid marked `partition_only`, or with `status: blocked`, is refused when it is
+expanded (`experiments.grid`).
 
 How a config maps onto `federated.loop.run_federated`:
 
@@ -263,7 +265,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    configs = [load_config(args.config)] if args.config else expand(args.grid)
+    configs = [load_config(args.config)] if args.config else expand(args.grid, for_training=True)
     trained, skipped = train_all(configs, force=args.force)
     print(f"{len(configs)} runs: {trained} trained, {skipped} already completed")
 

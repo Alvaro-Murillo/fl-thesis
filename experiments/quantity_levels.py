@@ -126,7 +126,7 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, default=LEVEL_SEEDS)
     args = parser.parse_args()
 
-    configs = expand(args.grid)
+    configs = expand(args.grid, for_training=False)
     levels = distinct_levels(configs)
     if not levels:
         print(f"{args.grid} sets no quantity target - nothing to check")

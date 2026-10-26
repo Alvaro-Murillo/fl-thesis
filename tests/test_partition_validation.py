@@ -257,7 +257,8 @@ def test_a_grid_without_targets_is_refused(tmp_path):
 
     grid = write_grid(
         tmp_path / "none.yaml",
-        f"base: config/smoke.yaml\nconstant:\n  runtime.out_dir: {tmp_path.as_posix()}\n",
+        f"base: config/smoke.yaml\nconstant:\n  runtime.out_dir: {tmp_path.as_posix()}\n"
+        "sweep:\n  runtime.trial: [0]\n",
     )
     with pytest.raises(SystemExit, match="sets an HD target"):
         validation.load_cells([grid])

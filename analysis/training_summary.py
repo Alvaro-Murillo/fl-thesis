@@ -164,7 +164,7 @@ def grid_runs(grids) -> tuple[set[str], dict[str, int], Path]:
     """The grids' run ids, the number of runs each condition should have, and the out_dir."""
     run_ids, expected, out_dirs = set(), {}, set()
     for grid in grids:
-        for config in expand(grid):
+        for config in expand(grid, for_training=False):  # reads runs; trains nothing
             run_ids.add(config_hash(config))
             key = condition_id(config)
             expected[key] = expected.get(key, 0) + 1

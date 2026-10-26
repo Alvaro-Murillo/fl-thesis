@@ -139,7 +139,7 @@ def load_cells(grids) -> tuple[list[dict], dict, dict, Path]:
     """
     records, levels_needed, datasets, out_dirs, skipped = {}, {}, {}, set(), 0
     for grid in map(Path, grids):
-        for config in expand(grid):
+        for config in expand(grid, for_training=False):
             p = config.partition
             if p.target_label_hd is None and p.target_quantity_hd is None:
                 skipped += 1

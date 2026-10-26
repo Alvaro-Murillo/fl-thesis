@@ -413,6 +413,8 @@ def resolve_targets(cell: dict, directory: str | Path = CALIBRATION_DIR) -> dict
         target = p.get(target_key)
         if not uses[parameter] or p.get(parameter) is not None or target is None:
             continue
+        if isinstance(target, bool) or not isinstance(target, (int, float)):
+            raise ValueError(f"{target_key} must be a number, got {target!r}")
         if target == 0:
             p[parameter] = NO_SKEW
             continue
