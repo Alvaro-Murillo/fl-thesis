@@ -2,13 +2,16 @@
 
     python -m analysis.partition_validation [--grid GRID ...] [--prefix NAME]
 
-The grids default to the two candidate-level grids, rq2_candidates.yaml and
-rq3_candidates.yaml. Generate their partitions first, and the 20-seed level
-check for any grid that sets quantity targets:
+The grids default to the RQ2 grid, the RQ3 grid and the RQ3 grid's
+partition-only edge (rq2.yaml, rq3.yaml, rq3_edge.yaml). Generate their
+partitions first, and the 20-seed level check for any grid that sets quantity
+targets:
 
-    python -m experiments.run_grid --grid config/grids/rq2_candidates.yaml
-    python -m experiments.run_grid --grid config/grids/rq3_candidates.yaml
-    python -m experiments.quantity_levels --grid config/grids/rq3_candidates.yaml
+    python -m experiments.run_grid --grid config/grids/rq2.yaml
+    python -m experiments.run_grid --grid config/grids/rq3.yaml
+    python -m experiments.run_grid --grid config/grids/rq3_edge.yaml
+    python -m experiments.quantity_levels --grid config/grids/rq3.yaml
+    python -m experiments.quantity_levels --grid config/grids/rq3_edge.yaml
 
 For every grid cell that sets an HD target this reads its recorded partition
 row, its client index arrays and, for a quantity target, its level row. It
@@ -23,7 +26,10 @@ prints the summary and writes, under {out_dir}/analysis/:
                               distribution, drift from its drawn mix
     {prefix}_cells.csv        one row per target cell (arm x targets): realized
                               HD over its trials, the label check count, the
-                              quantity level's 20-seed verdict, and the verdict
+                              quantity level's 20-seed verdict, and the verdict;
+                              `alpha_source` says where the cell's alpha came
+                              from: `curve`, `no_skew` (target 0) or `per-cell`
+                              (set in the grid, not read off its curve)
     {prefix}_label.png        nominal vs measured label-HD, one panel per arm
     {prefix}_quantity.png     nominal vs measured quantity-HD: the trained
                               trials and the level's 20 seeds
@@ -51,6 +57,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from experiments.config import to_dict
 from experiments.datasets import load_labels
 from experiments.grid import expand
 from experiments.quantity_levels import level_fields
@@ -64,9 +71,10 @@ from experiments.recording import (
 )
 from experiments.run_partition import FEASIBILITY_TOLERANCE
 from experiments.seeding import seeds_for
+from partitioning.calibration import resolve_targets
 from partitioning.metrics import class_counts, hellinger
 
-GRIDS = (Path("config/grids/rq2_candidates.yaml"), Path("config/grids/rq3_candidates.yaml"))
+GRIDS = tuple(Path(f"config/grids/{name}.yaml") for name in ("rq2", "rq3", "rq3_edge"))
 PREFIX = "partition_validation"
 TARGETS = ("target_label_hd", "target_quantity_hd")
 # A target cell: one arm at one pair of targets. Its trials are its partitions.
@@ -83,6 +91,7 @@ PARTITION_COLUMNS = (
     "target_label_hd",
     "target_quantity_hd",
     "alpha",
+    "alpha_source",
     "beta",
     "trial",
     "partition_seed",
@@ -126,6 +135,27 @@ def level_key(row) -> tuple:
     return tuple(row[k] for k in LEVEL_KEYS)
 
 
+def alpha_source(config) -> str | None:
+    """Where a label-targeted cell's alpha came from; None if it has no label target or alpha.
+
+    `curve` when re-resolving the target gives the cell's alpha, `no_skew` for
+    target 0, `per-cell` for an alpha the grid sets itself, as a cell that fails
+    its label check on the curve's alpha would carry.
+    """
+    p = config.partition
+    if p.target_label_hd is None or p.alpha is None:
+        return None
+    cell = to_dict(config)
+    cell["partition"]["alpha"] = None
+    try:
+        resolved = resolve_targets(cell)["partition"]["alpha"]
+    except (ValueError, FileNotFoundError):  # no curve to read the target off
+        return "per-cell"
+    if resolved != p.alpha:
+        return "per-cell"
+    return "no_skew" if p.target_label_hd == 0 else "curve"
+
+
 def load_cells(grids) -> tuple[list[dict], dict, dict, Path]:
     """Recorded rows of every targeted cell, its level rows, and the datasets.
 
@@ -152,7 +182,8 @@ def load_cells(grids) -> tuple[list[dict], dict, dict, Path]:
                 "target_quantity_hd": p.target_quantity_hd,
             }
             records.setdefault(
-                (pid, *targets.values()), {"grid": grid.stem, "_grid": grid, **targets}
+                (pid, *targets.values()),
+                {"grid": grid.stem, "_grid": grid, **targets, "alpha_source": alpha_source(config)},
             )
             datasets[config.dataset.name] = config.dataset
             out_dirs.add(config.runtime.out_dir)
@@ -262,6 +293,7 @@ def cells_table(partitions: pd.DataFrame, levels: dict) -> pd.DataFrame:
         row = {
             **cell,
             "alpha": g["alpha"].iloc[0],
+            "alpha_source": g["alpha_source"].iloc[0],
             "beta": g["beta"].iloc[0],
             "trials": sorted(g["trial"].tolist()),
             "n_partitions": len(g),
@@ -691,7 +723,10 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "--grid", action="append", type=Path, help="repeatable; default: the two candidate grids"
+        "--grid",
+        action="append",
+        type=Path,
+        help="repeatable; default: rq2.yaml, rq3.yaml and rq3_edge.yaml",
     )
     parser.add_argument("--prefix", default=PREFIX, help=f"output file prefix (default {PREFIX})")
     args = parser.parse_args()

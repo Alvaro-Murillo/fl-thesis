@@ -1,27 +1,52 @@
-# RQ2 - STUB. Blocked on the target-level calibration table.
+# RQ2 - pure vs natural label skew, matched on realized label-HD.
 #
-# The headline claim is a paired comparison matched on REALIZED label-HD, so
-# the grid must be specified in target_label_hd, not alpha. Resolving a target
-# to the alpha each arm needs is exactly what calibration/{id}.json provides,
-# and the same alpha does not yield the same label-HD in both arms - which is
-# the confound this design exists to avoid.
+# Three arms at the same label-HD targets: natural_per_class uncapped,
+# natural_per_class with the NIID-Bench cap (`niid_bench`, the condition
+# FedArtML-based studies ran), and pure_label, whose client sizes are held at
+# N/K. Each arm resolves its own alpha from its own 20-trial curve (CIFAR-10,
+# K = 30), since the same alpha does not give the same label-HD in every arm.
+# Target 0 means no skew (alpha 1000.0), so the natural arms' target-0 cells are
+# the RQ1 grid's alpha = 1000 partitions.
 #
-# `status: blocked` is load-bearing: the sweep driver must refuse to run a grid
-# that carries it, rather than silently sweeping an incomplete specification.
+# Levels 0, 0.25, 0.45 and 0.70 come from the level rule on the 20-seed label-HD
+# ceilings: 0.759 for natural uncapped (the binding arm), 0.774 capped and 0.811
+# pure_label. Every arm hits every level with all 20 seeds within 0.05 of the
+# target. At 0.70 only 53% (uncapped) and 87% (capped) of raw natural draws meet
+# min_size_policy 10, so those cells redraw.
+#
+# Training waits for FedProx mu. fedprox requires mu > 0, so the grid carries the
+# fedavg case only; the partitions do not depend on the algorithm, so the set is
+# complete. When mu is set, the cases become arm x algorithm, and the fedavg
+# cells, with their config hashes, stay as they are.
+#
+#   python -m experiments.run_grid --grid config/grids/rq2.yaml
+#   python -m analysis.partition_validation
+#
+# 3 arms x 4 levels x 3 trials = 36 partitions; 72 runs once both algorithms are in.
 
 status: blocked
-blocked_on: target-level calibration table (target_label_hd -> alpha, per dataset x K x mode)
+blocked_on: FedProx mu (the fedprox case is added once mu is tuned)
 
 base: config/base.yaml
 
-# Intended shape once calibration exists - Arm A vs Arm B at matched targets:
-#
-# constant:
-#   partition.K: 30
-#   partition.calibration_id: <id of the calibration table>
-#
-# sweep:
-#   partition.mode: [natural_per_class, pure_label]
-#   partition.target_label_hd: [...]   # from the calibrated feasible range
-#   federated.algorithm: [fedavg, fedprox]
-#   runtime.trial: [0, 1, 2]
+constant:
+  partition.K: 30
+  partition.alpha: null
+  federated.algorithm: fedavg
+
+cases:
+  - partition.mode: natural_per_class
+    partition.size_cap: none
+    partition.min_size_policy: 10
+    partition.calibration_id: 147e58d391  # natural_per_class uncapped, 20 trials
+  - partition.mode: natural_per_class
+    partition.size_cap: niid_bench
+    partition.min_size_policy: 10
+    partition.calibration_id: 146de82d74  # natural_per_class niid_bench, 20 trials
+  - partition.mode: pure_label
+    partition.min_size_policy: 0
+    partition.calibration_id: 90f8f1dd9b  # pure_label, 20 trials
+
+sweep:
+  partition.target_label_hd: [0.0, 0.25, 0.45, 0.70]
+  runtime.trial: [0, 1, 2]

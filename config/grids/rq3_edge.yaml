@@ -1,0 +1,31 @@
+# The RQ3 grid's partition-only edge: quantity-HD 0.80, near the 0.830 ceiling,
+# at every RQ3 label level. Its partitions carry the nominal-vs-measured quantity
+# scatter and the feasibility map up toward the ceiling; none is trained.
+# Same construction, curves and trials as rq3.yaml; beta 0.007623.
+#
+# Over 20 seeds the level realizes 0.800 in combined. 5% of the 0.70 level's
+# seeds land closer to 0.80 than to 0.70, and 10% of this level's closer to 0.70.
+#
+#   python -m experiments.run_grid --grid config/grids/rq3_edge.yaml
+#   python -m experiments.quantity_levels --grid config/grids/rq3_edge.yaml
+#   python -m analysis.partition_validation
+#
+# 4 label levels x 3 trials = 12 partitions.
+
+partition_only: true
+
+base: config/base.yaml
+
+constant:
+  partition.mode: combined
+  partition.K: 30
+  partition.alpha: null
+  partition.beta: null
+  partition.min_size_policy: 0
+  partition.calibration_id: 90f8f1dd9b  # pure_label alpha curve, 20 trials
+  partition.quantity_calibration_id: 8f995f9546  # quantity_only beta curve, 20 trials
+
+sweep:
+  partition.target_label_hd: [0.0, 0.25, 0.45, 0.70]
+  partition.target_quantity_hd: [0.80]
+  runtime.trial: [0, 1, 2]

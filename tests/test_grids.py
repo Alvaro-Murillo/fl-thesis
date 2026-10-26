@@ -12,7 +12,7 @@ from experiments.recording import partition_id, read_jsonl
 from experiments.seeding import seeds_for
 
 GRIDS = "config/grids"
-PARTITION_ONLY_GRIDS = ["rq1.yaml", "quantity_skew.yaml"]
+PARTITION_ONLY_GRIDS = ["rq1.yaml", "quantity_skew.yaml", "rq3_edge.yaml"]
 
 
 def pid(config):
@@ -86,23 +86,41 @@ def test_quantity_skew_grid_expands_to_quantity_only_cells():
     assert {c.partition.K for c in configs} == {10, 30, 100}
 
 
-CANDIDATE_LABEL_TARGETS = [0.0, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75]
+LABEL_LEVELS = [0.0, 0.25, 0.45, 0.70]
+QUANTITY_LEVELS = [0.0, 0.35, 0.70]
+EDGE_LEVEL = 0.80
+RQ2_CURVES = {
+    (PartitionMode.NATURAL_PER_CLASS, "none"): "147e58d391",
+    (PartitionMode.NATURAL_PER_CLASS, "niid_bench"): "146de82d74",
+    (PartitionMode.PURE_LABEL, "none"): "90f8f1dd9b",
+}
+# alpha per label level and arm, and beta per quantity level, as measured on the
+# 20-trial curves before the grids were written (4 significant figures).
+MEASURED_ALPHAS = {
+    (PartitionMode.NATURAL_PER_CLASS, "none"): {0.25: 1.629, 0.45: 0.4185, 0.70: 0.06852},
+    (PartitionMode.NATURAL_PER_CLASS, "niid_bench"): {0.25: 2.579, 0.45: 0.6051, 0.70: 0.09733},
+    (PartitionMode.PURE_LABEL, "none"): {0.25: 1.577, 0.45: 0.4116, 0.70: 0.06039},
+}
+MEASURED_BETAS = {0.35: 0.8634, 0.70: 0.07397, EDGE_LEVEL: 0.007623}
 
 
-def test_rq2_candidates_resolve_each_arm_on_its_own_curve():
+def rq2():
+    return expand(f"{GRIDS}/rq2.yaml", for_training=False)
+
+
+def rq3(name="rq3"):
+    return expand(f"{GRIDS}/{name}.yaml", for_training=False)
+
+
+def test_rq2_resolves_each_arm_on_its_own_20_trial_curve():
     from partitioning.calibration import NO_SKEW, alpha_for_target, load_calibration
 
-    configs = expand(f"{GRIDS}/rq2_candidates.yaml", for_training=False)
-    assert len(configs) == 3 * 10 * 3 and len({pid(c) for c in configs}) == 90
-    curves = {
-        (PartitionMode.NATURAL_PER_CLASS, "none"): "96fb06debf",
-        (PartitionMode.NATURAL_PER_CLASS, "niid_bench"): "d85a67a9c5",
-        (PartitionMode.PURE_LABEL, "none"): "da8b82c519",
-    }
+    configs = rq2()
+    assert len(configs) == 3 * 4 * 3 and len({pid(c) for c in configs}) == 36
     for c in configs:
         p = c.partition
         assert p.K == 30 and p.target_quantity_hd is None and p.beta is None
-        assert p.calibration_id == curves[(p.mode, p.size_cap)]
+        assert p.calibration_id == RQ2_CURVES[(p.mode, p.size_cap)]
         assert p.min_size_policy == (0 if p.mode is PartitionMode.PURE_LABEL else 10)
         expected = (
             NO_SKEW
@@ -110,13 +128,34 @@ def test_rq2_candidates_resolve_each_arm_on_its_own_curve():
             else alpha_for_target(load_calibration(p.calibration_id), p.target_label_hd)
         )
         assert p.alpha == expected
-    assert sorted({c.partition.target_label_hd for c in configs}) == CANDIDATE_LABEL_TARGETS
+        if p.target_label_hd:
+            measured = MEASURED_ALPHAS[(p.mode, p.size_cap)][p.target_label_hd]
+            assert p.alpha == pytest.approx(measured, rel=1e-3)
+    assert sorted({c.partition.target_label_hd for c in configs}) == LABEL_LEVELS
     assert {c.runtime.trial for c in configs} == {0, 1, 2}
 
 
-def test_rq3_candidates_are_combined_with_shared_draws_per_axis():
-    configs = expand(f"{GRIDS}/rq3_candidates.yaml", for_training=False)
-    assert len(configs) == 10 * 9 * 3 and len({pid(c) for c in configs}) == 270
+def test_rq2_natural_cells_at_target_zero_are_the_rq1_alpha_1000_partitions():
+    zero = {
+        (c.partition.size_cap, c.runtime.trial): pid(c)
+        for c in rq2()
+        if c.partition.target_label_hd == 0 and c.partition.mode is PartitionMode.NATURAL_PER_CLASS
+    }
+    assert zero == {
+        ("none", 0): "268c0acde3",
+        ("none", 1): "ef7bf61e06",
+        ("none", 2): "d1cbf3debc",
+        ("niid_bench", 0): "1f1683dcb2",
+        ("niid_bench", 1): "29c3e9f22c",
+        ("niid_bench", 2): "547ae83745",
+    }
+    rq1 = {pid(c) for c in expand(f"{GRIDS}/rq1.yaml", for_training=False)}
+    assert set(zero.values()) <= rq1
+
+
+def test_rq3_is_combined_with_one_alpha_per_label_level_and_one_beta_per_quantity_level():
+    configs = rq3()
+    assert len(configs) == 4 * 3 * 3 and len({pid(c) for c in configs}) == 36
     assert all(c.partition.mode is PartitionMode.COMBINED for c in configs)
     assert all(c.partition.min_size_policy == 0 and c.partition.K == 30 for c in configs)
     alphas, betas = {}, {}
@@ -125,26 +164,42 @@ def test_rq3_candidates_are_combined_with_shared_draws_per_axis():
         alphas.setdefault(p.target_label_hd, set()).add(p.alpha)
         betas.setdefault(p.target_quantity_hd, set()).add(p.beta)
     assert all(len(v) == 1 for v in (*alphas.values(), *betas.values()))
-    assert sorted(alphas) == CANDIDATE_LABEL_TARGETS
-    assert sorted(betas) == [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+    assert sorted(alphas) == LABEL_LEVELS and sorted(betas) == QUANTITY_LEVELS
+    for level, (beta,) in betas.items():
+        assert beta == (1000.0 if level == 0 else pytest.approx(MEASURED_BETAS[level], rel=1e-3))
     # Same curve, same alpha as the pure arm: a label level means the same thing in RQ2 and RQ3.
     pure = {
         c.partition.target_label_hd: c.partition.alpha
-        for c in expand(f"{GRIDS}/rq2_candidates.yaml", for_training=False)
+        for c in rq2()
         if c.partition.mode is PartitionMode.PURE_LABEL
     }
     assert {t: a.pop() for t, a in alphas.items()} == pure
 
 
+def test_the_edge_level_is_only_in_the_partition_only_edge_grid():
+    trained, edge = rq3(), rq3("rq3_edge")
+    assert EDGE_LEVEL not in {c.partition.target_quantity_hd for c in trained}
+    assert len(edge) == 4 * 3 and len({pid(c) for c in edge}) == 12
+    assert {c.partition.target_quantity_hd for c in edge} == {EDGE_LEVEL}
+    (beta,) = {c.partition.beta for c in edge}
+    assert beta == pytest.approx(MEASURED_BETAS[EDGE_LEVEL], rel=1e-3)
+    # The same label levels, alphas and trials as the trained grid.
+    alpha = lambda configs: {(c.partition.target_label_hd, c.partition.alpha) for c in configs}
+    assert alpha(edge) == alpha(trained)
+    assert {c.runtime.trial for c in edge} == {0, 1, 2}
+    assert not {pid(c) for c in edge} & {pid(c) for c in trained}
+
+
 @pytest.mark.parametrize("name", ["rq2.yaml", "rq3.yaml"])
-@pytest.mark.parametrize("for_training", [True, False])
-def test_stub_grids_are_refused_by_every_tool(name, for_training):
-    """A stub has no sweep, so no tool may expand it to its base config's cell."""
+def test_rq2_and_rq3_wait_for_mu_and_hold_fedavg_cells_only(name):
+    """Blocked for training until FedProx mu is tuned; their partitions can be made now."""
     grid = yaml.safe_load(open(f"{GRIDS}/{name}", encoding="utf-8"))
-    assert grid["status"] == "blocked" and grid["blocked_on"]
-    assert "sweep" not in grid
-    with pytest.raises(GridIncomplete, match="no sweep"):
-        expand(f"{GRIDS}/{name}", for_training=for_training)
+    assert grid["status"] == "blocked" and "mu" in grid["blocked_on"]
+    assert "partition_only" not in grid
+    with pytest.raises(GridBlocked, match="blocked, on: FedProx mu"):
+        expand(f"{GRIDS}/{name}", for_training=True)
+    configs = expand(f"{GRIDS}/{name}", for_training=False)
+    assert {(c.federated.algorithm, c.federated.mu) for c in configs} == {("fedavg", 0.0)}
 
 
 # --- what a grid may be expanded for ----------------------------------------

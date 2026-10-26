@@ -348,3 +348,21 @@ def test_one_cell_with_two_parameters_is_refused():
     records = [record(0, 0.3), record(1, 0.3, alpha=5.0)]
     with pytest.raises(ValueError, match="more than one alpha/beta"):
         cells_table(partitions_table(records), level(True))
+
+
+def test_alpha_source_tells_curve_no_skew_and_per_cell_apart():
+    import dataclasses
+
+    from analysis.partition_validation import alpha_source
+    from experiments.grid import expand
+
+    cells = {
+        c.partition.target_label_hd: c
+        for c in expand("config/grids/rq3.yaml", for_training=False)
+        if c.partition.target_quantity_hd == 0.35 and c.runtime.trial == 0
+    }
+    assert alpha_source(cells[0.45]) == "curve"
+    assert alpha_source(cells[0.0]) == "no_skew"
+    moved = cells[0.45].partition
+    moved = dataclasses.replace(cells[0.45], partition=dataclasses.replace(moved, alpha=0.5))
+    assert alpha_source(moved) == "per-cell"

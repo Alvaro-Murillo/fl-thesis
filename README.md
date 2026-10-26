@@ -61,8 +61,9 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
     resume
   - quantity_levels.py - the 20-seed feasibility check of a grid's quantity levels
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
-  smoke_combined.yaml, grids/ (one per research question, quantity_skew.yaml, and the
-  candidate-level grids rq2_candidates.yaml and rq3_candidates.yaml)
+  smoke_combined.yaml, the pipeline-check configs sanity_iid.yaml,
+  sanity_label_skew.yaml and sanity_quantity_skew.yaml, and grids/ (rq1.yaml,
+  rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, and quantity_skew.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -125,13 +126,16 @@ Compare against FedArtML on shared seeds (no training), and measure quantity ske
     python -m experiments.run_grid --grid config/grids/quantity_skew.yaml
     python -m analysis.quantity_skew_measurements
 
-Validate target levels before any training (partition-only; about a minute of CPU).
-`analysis.partition_validation` defaults to the two candidate grids; `--grid`
-(repeatable) points it at any grid that sets HD targets:
+Make and validate the RQ2 and RQ3 partitions before any training (partition-only,
+CPU). Generate from a clean tree, so every row records `git_dirty` false.
+`analysis.partition_validation` defaults to rq2.yaml, rq3.yaml and rq3_edge.yaml;
+`--grid` (repeatable) points it at any grid that sets HD targets:
 
-    python -m experiments.run_grid --grid config/grids/rq2_candidates.yaml
-    python -m experiments.run_grid --grid config/grids/rq3_candidates.yaml
-    python -m experiments.quantity_levels --grid config/grids/rq3_candidates.yaml
+    python -m experiments.run_grid --grid config/grids/rq2.yaml
+    python -m experiments.run_grid --grid config/grids/rq3.yaml
+    python -m experiments.run_grid --grid config/grids/rq3_edge.yaml
+    python -m experiments.quantity_levels --grid config/grids/rq3.yaml
+    python -m experiments.quantity_levels --grid config/grids/rq3_edge.yaml
     python -m analysis.partition_validation
 
 Check the environment and estimate the compute budget:
@@ -264,23 +268,35 @@ is its own step and excludes nothing:
 
     python -m experiments.quantity_levels --grid config/grids/rq3.yaml
 
-The RQ3 grid (`rq3.yaml`, still a stub) is all `combined`: 3 label-HD x 3
-quantity-HD levels, the first on each axis 0, so its edges are the single-skew
-arms and its corner is the no-skew baseline. combined reads alpha off the
-pure_label curve and beta off the quantity_only curve. Its sizes come from the
-same draw, and its label-HD stayed within 0.03 of pure_label's at the same
-alpha across the quantity range.
+The RQ2 and RQ3 levels come from a level rule applied to 20-seed ceilings
+(CIFAR-10, K = 30), not from hand-picked candidates:
 
-The candidate-level grids hold every level the RQ2 and RQ3 grids might use, so
-levels are chosen from measured feasibility rather than assumed. Both are
-CIFAR-10, K = 30, trials 0-2 (the trained trials, so a chosen level trains on
-the very partitions that were validated):
+- Label-HD 0, 0.25, 0.45, 0.70, shared by RQ2 and RQ3. The common ceiling is
+  0.759, set by natural_per_class uncapped (capped 0.774, pure_label 0.811).
+  Every RQ2 arm hits every level with all 20 seeds within 0.05.
+- Quantity-HD 0, 0.35, 0.70 for training, from the ceiling 0.830, plus a
+  partition-only edge level at 0.80.
 
-- `rq2_candidates.yaml` - label targets 0, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6,
-  0.7, 0.75 for natural_per_class uncapped, natural_per_class niid_bench and
-  pure_label, each arm on its own alpha curve (90 partitions).
-- `rq3_candidates.yaml` - combined at those label targets x quantity targets
-  0-0.8 in steps of 0.1 (270 partitions).
+Alpha and beta are read off 20-trial curves: 147e58d391 (natural_per_class
+uncapped), 146de82d74 (niid_bench), 90f8f1dd9b (pure_label, and combined's
+alpha) and 8f995f9546 (quantity_only, combined's beta). All three grids are
+CIFAR-10, K = 30, trials 0-2, the trained trials:
+
+- `rq2.yaml` - natural_per_class uncapped, natural_per_class niid_bench and
+  pure_label at the four label levels, each arm on its own curve (36
+  partitions). Its natural target-0 cells are RQ1's alpha = 1000 partitions.
+- `rq3.yaml` - all `combined`, 4 label x 3 quantity levels (36 partitions). The
+  first level on each axis is 0, so its edges are the single-skew arms and its
+  corner is the no-skew baseline. combined uses one alpha per label level, the
+  pure arm's, so cells at one label level share their drawn mixes. Its
+  label-HD then rises with quantity skew (0.446 to 0.474 at label level 0.45,
+  from quantity 0 to 0.70, over 20 seeds), so the analysis uses realized label-HD.
+- `rq3_edge.yaml` - the same at quantity 0.80 only (12 partitions),
+  `partition_only`.
+
+rq2.yaml and rq3.yaml are `status: blocked` on FedProx mu and hold the fedavg
+case only, since fedprox requires mu > 0. Their partitions do not depend on the
+algorithm, so the partition set is already complete.
 
 `analysis.partition_validation` applies the rules above: a cell is feasible if
 every one of its partitions is within 0.05 of its label target and its
