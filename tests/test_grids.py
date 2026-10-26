@@ -40,10 +40,10 @@ def test_rq1_cells_are_distinct_partitions():
     assert len({pid(c) for c in expand(f"{GRIDS}/rq1.yaml", for_training=False)}) == 270
 
 
-def test_rq1_keeps_every_partition_of_the_a4_grid(tmp_path):
+def test_rq1_keeps_every_partition_of_the_original_63_cell_grid(tmp_path):
     """The original 63-cell RQ1 grid must survive the extension with unchanged IDs."""
-    a4 = tmp_path / "a4.yaml"
-    a4.write_text(
+    original = tmp_path / "original.yaml"
+    original.write_text(
         yaml.safe_dump(
             {
                 "base": "config/base.yaml",
@@ -58,7 +58,7 @@ def test_rq1_keeps_every_partition_of_the_a4_grid(tmp_path):
         ),
         encoding="utf-8",
     )
-    old = {pid(c) for c in expand(a4, for_training=False)}
+    old = {pid(c) for c in expand(original, for_training=False)}
     assert len(old) == 63
     assert old <= {pid(c) for c in expand(f"{GRIDS}/rq1.yaml", for_training=False)}
 
