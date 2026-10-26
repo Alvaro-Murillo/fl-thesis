@@ -548,5 +548,27 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   - Real CIFAR-10, K = 30, natural_per_class alpha = 0.5, 5 rounds x 2 epochs, trials
     0-2: final accuracy 0.396 +/- 0.004 (FedAvg) and 0.402 +/- 0.005 (FedProx mu =
     0.01), rta 4 in every run. A short check that the records work, not a result
-- Next: RQ2 and RQ3 levels chosen from the validation tables; capped vs
-  uncapped for the RQ2 natural arm
+- Pipeline check (`config/sanity_*.yaml`): one full 40-round x 10-epoch FedAvg run
+  each on stored partitions (CIFAR-10, K = 30, trial 0, strict determinism)
+  - Near IID (natural_per_class alpha = 1000): final accuracy 0.660, best 0.661, rta
+    5; inside the 0.65-0.70 expected for the source paper's CNN in FL
+  - Extreme label skew (alpha = 0.03, label-HD 0.78): final 0.373, rta 15, a clear
+    drop
+  - Heavy quantity skew (quantity_only, quantity-HD 0.72, one client with 34,141 of
+    50,000 images): best 0.706 at round 3, final 0.654, test loss 0.92 -> 5.15. The
+    large client dominates FedAvg's size-weighted average and overfits
+  - 11.9-12.3 min per run, 2.23-2.31 ms/step, about 7,960 steps per round whatever
+    the skew
+- RQ2 and RQ3 levels and grids: label-HD 0, 0.25, 0.45, 0.70; quantity-HD 0, 0.35,
+  0.70 trained and 0.80 partition-only. The levels come from a level rule on
+  20-seed ceilings, with alpha and beta read off 20-trial curves; no skew is alpha
+  = beta = 1000.0
+  - Partition validation (CIFAR-10, K = 30, trials 0-2): all 28 target cells
+    feasible, 84 partitions, none min-size infeasible. The RQ2 arms realize label-HD
+    within 0.023 of each other at every level. At 0.70 the natural arms carry
+    incidental quantity-HD 0.361 (uncapped) and 0.250 (capped); pure_label 0.000
+  - Every quantity level passes its 20-seed check: 0.011, 0.349, 0.668, 0.800
+  - combined's label-HD rises with quantity skew. At label level 0.45 it goes from
+    0.436 at quantity 0 to 0.463 at 0.70 on the trained trials (+0.027; +0.028
+    over 20 seeds)
+- Next: tune FedProx mu, then train RQ2 and RQ3
