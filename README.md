@@ -294,9 +294,15 @@ CIFAR-10, K = 30, trials 0-2, the trained trials:
 - `rq3_edge.yaml` - the same at quantity 0.80 only (12 partitions),
   `partition_only`.
 
-rq2.yaml and rq3.yaml are `status: blocked` on FedProx mu and hold the fedavg
-case only, since fedprox requires mu > 0. Their partitions do not depend on the
-algorithm, so the partition set is already complete.
+Every rq2.yaml and rq3.yaml cell runs FedAvg and FedProx (mu = 0.001) on the same
+partition: 72 runs per grid. mu was tuned once on `mu_tuning.yaml` (below). Both
+grids stay `status: blocked` until training is given the go-ahead.
+
+`mu_tuning.yaml` is the RQ3 cell at label-HD 0.45 x quantity-HD 0.35, at trials
+3-4, which no reported grid trains: FedAvg and FedProx at mu in {0.001, 0.01,
+0.1, 1, 10, 100} (the source paper's grid), 14 runs. The selection rule is in the
+file and was committed before any run: highest mean final-round accuracy over the
+two trials, FedAvg as mu = 0, the smallest mu within 0.01 of the top mean.
 
 `analysis.partition_validation` applies the rules above: a cell is feasible if
 every one of its partitions is within 0.05 of its label target and its
@@ -571,4 +577,13 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   - combined's label-HD rises with quantity skew. At label level 0.45 it goes from
     0.436 at quantity 0 to 0.463 at 0.70 on the trained trials (+0.027; +0.028
     over 20 seeds)
-- Next: tune FedProx mu, then train RQ2 and RQ3
+- FedProx mu tuned on `mu_tuning.yaml` (combined, label-HD 0.45 x quantity-HD 0.35,
+  trials 3-4, 40 rounds x 10 epochs): mean final accuracy 0.6287 for FedAvg, then
+  0.6341, 0.6391, 0.6409, 0.4456, 0.2225 and 0.1088 for mu = 0.001, 0.01, 0.1, 1, 10
+  and 100. mu = 0.001, 0.01 and 0.1 are within 0.01 of the top, so the rule takes
+  0.001. From mu = 1 up accuracy collapses (0.11 at mu = 100, near chance),
+  presumably because the proximal term then dominates the gradient Adam steps on;
+  not measured here
+  - Measured: 11.7 min per FedAvg run and 13.5 min per FedProx run (2.2 and 2.5
+    ms/step), so RQ2 and RQ3 take about 15 h each
+- Next: train RQ2, then RQ3

@@ -14,38 +14,60 @@
 # target. At 0.70 only 53% (uncapped) and 87% (capped) of raw natural draws meet
 # min_size_policy 10, so those cells redraw.
 #
-# Training waits for FedProx mu. fedprox requires mu > 0, so the grid carries the
-# fedavg case only; the partitions do not depend on the algorithm, so the set is
-# complete. When mu is set, the cases become arm x algorithm, and the fedavg
-# cells, with their config hashes, stay as they are.
+# Each arm runs FedAvg and FedProx. FedProx's mu = 0.001 was chosen once, on
+# mu_tuning.yaml (the RQ3 cell at label-HD 0.45 x quantity-HD 0.35, trials 3-4),
+# by the rule fixed there before any run: mean final accuracy 0.6341 at mu 0.001
+# against 0.6287 for FedAvg; 0.01 and 0.1 were within 0.01 of the top mean (0.6409
+# at 0.1), so the smallest was taken. The fedavg cells and their config hashes are
+# the same as before the fedprox case was added.
 #
 #   python -m experiments.run_grid --grid config/grids/rq2.yaml
 #   python -m analysis.partition_validation
+#   python -m experiments.run_training --grid config/grids/rq2.yaml
 #
-# 3 arms x 4 levels x 3 trials = 36 partitions; 72 runs once both algorithms are in.
+# 3 arms x 4 levels x 3 trials = 36 partitions; x 2 algorithms = 72 runs.
 
 status: blocked
-blocked_on: FedProx mu (the fedprox case is added once mu is tuned)
+blocked_on: the author's go-ahead to train (FedProx mu = 0.001 is in)
 
 base: config/base.yaml
 
 constant:
   partition.K: 30
   partition.alpha: null
-  federated.algorithm: fedavg
 
 cases:
   - partition.mode: natural_per_class
     partition.size_cap: none
     partition.min_size_policy: 10
     partition.calibration_id: 147e58d391  # natural_per_class uncapped, 20 trials
+    federated.algorithm: fedavg
+  - partition.mode: natural_per_class
+    partition.size_cap: none
+    partition.min_size_policy: 10
+    partition.calibration_id: 147e58d391
+    federated.algorithm: fedprox
+    federated.mu: 0.001
   - partition.mode: natural_per_class
     partition.size_cap: niid_bench
     partition.min_size_policy: 10
     partition.calibration_id: 146de82d74  # natural_per_class niid_bench, 20 trials
+    federated.algorithm: fedavg
+  - partition.mode: natural_per_class
+    partition.size_cap: niid_bench
+    partition.min_size_policy: 10
+    partition.calibration_id: 146de82d74
+    federated.algorithm: fedprox
+    federated.mu: 0.001
   - partition.mode: pure_label
     partition.min_size_policy: 0
     partition.calibration_id: 90f8f1dd9b  # pure_label, 20 trials
+    federated.algorithm: fedavg
+  - partition.mode: pure_label
+    partition.min_size_policy: 0
+    partition.calibration_id: 90f8f1dd9b
+    federated.algorithm: fedprox
+    federated.mu: 0.001
 
 sweep:
   partition.target_label_hd: [0.0, 0.25, 0.45, 0.70]

@@ -27,17 +27,19 @@
 # combined over 20 seeds and is reported by that value. A level at 0.80, near the
 # ceiling, is partition-only (rq3_edge.yaml).
 #
-# Training waits for FedProx mu, as in rq2.yaml: fedavg case only for now.
+# Every cell runs FedAvg and FedProx with mu = 0.001, chosen once on
+# mu_tuning.yaml (see rq2.yaml). The fedavg cells and their config hashes are the
+# same as before the fedprox case was added.
 #
 #   python -m experiments.run_grid --grid config/grids/rq3.yaml
 #   python -m experiments.quantity_levels --grid config/grids/rq3.yaml
 #   python -m analysis.partition_validation
+#   python -m experiments.run_training --grid config/grids/rq3.yaml
 #
-# 4 label x 3 quantity levels x 3 trials = 36 partitions; 72 runs once both
-# algorithms are in.
+# 4 label x 3 quantity levels x 3 trials = 36 partitions; x 2 algorithms = 72 runs.
 
 status: blocked
-blocked_on: FedProx mu (the fedprox case is added once mu is tuned)
+blocked_on: the author's go-ahead to train (FedProx mu = 0.001 is in)
 
 base: config/base.yaml
 
@@ -49,7 +51,10 @@ constant:
   partition.min_size_policy: 0
   partition.calibration_id: 90f8f1dd9b  # pure_label alpha curve, 20 trials
   partition.quantity_calibration_id: 8f995f9546  # quantity_only beta curve, 20 trials
-  federated.algorithm: fedavg
+
+cases:
+  - {federated.algorithm: fedavg}
+  - {federated.algorithm: fedprox, federated.mu: 0.001}
 
 sweep:
   partition.target_label_hd: [0.0, 0.25, 0.45, 0.70]
