@@ -224,12 +224,11 @@ def test_the_fedavg_cells_keep_their_config_hashes(name):
 
 
 @pytest.mark.parametrize("name", ["rq2.yaml", "rq3.yaml"])
-def test_rq2_and_rq3_stay_blocked_for_training_until_the_go_ahead(name):
+def test_rq2_and_rq3_are_open_for_training(name):
     grid = yaml.safe_load(open(f"{GRIDS}/{name}", encoding="utf-8"))
-    assert grid["status"] == "blocked" and grid["blocked_on"]
+    assert "status" not in grid and "blocked_on" not in grid
     assert "partition_only" not in grid
-    with pytest.raises(GridBlocked, match="has status blocked"):
-        expand(f"{GRIDS}/{name}", for_training=True)
+    assert len(expand(f"{GRIDS}/{name}", for_training=True)) == 72
 
 
 # --- what a grid may be expanded for ----------------------------------------

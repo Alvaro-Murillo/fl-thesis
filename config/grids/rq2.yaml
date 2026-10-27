@@ -27,9 +27,6 @@
 #
 # 3 arms x 4 levels x 3 trials = 36 partitions; x 2 algorithms = 72 runs.
 
-status: blocked
-blocked_on: the author's go-ahead to train (FedProx mu = 0.001 is in)
-
 base: config/base.yaml
 
 constant:

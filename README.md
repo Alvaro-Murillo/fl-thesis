@@ -296,7 +296,7 @@ CIFAR-10, K = 30, trials 0-2, the trained trials:
 
 Every rq2.yaml and rq3.yaml cell runs FedAvg and FedProx (mu = 0.001) on the same
 partition: 72 runs per grid. mu was tuned once on `mu_tuning.yaml` (below). Both
-grids stay `status: blocked` until training is given the go-ahead.
+grids are open for training; RQ2 is trained first.
 
 `mu_tuning.yaml` is the RQ3 cell at label-HD 0.45 x quantity-HD 0.35, at trials
 3-4, which no reported grid trains: FedAvg and FedProx at mu in {0.001, 0.01,
@@ -586,4 +586,5 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   not measured here
   - Measured: 11.7 min per FedAvg run and 13.5 min per FedProx run (2.2 and 2.5
     ms/step), so RQ2 and RQ3 take about 15 h each
+- `rq2.yaml` and `rq3.yaml` unblocked for training
 - Next: train RQ2, then RQ3
