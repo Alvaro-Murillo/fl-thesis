@@ -63,7 +63,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
   smoke_combined.yaml, the pipeline-check configs sanity_iid.yaml,
   sanity_label_skew.yaml and sanity_quantity_skew.yaml, and grids/ (rq1.yaml,
-  rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, and quantity_skew.yaml)
+  rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, quantity_skew.yaml,
+  mu_tuning.yaml and rq2_class_order.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -156,6 +157,12 @@ RQ1 measures.
     already holding >= N/K samples gets no share of the next class. The cap
     is checked once per class, before the split, so it can overshoot N/K
     within one class. On a shared RNG stream this matches FedArtML exactly.
+  - `class_order: index` (default) splits the classes in ascending index
+    order, as FedArtML does; `class_order: reversed` splits them in
+    descending order and changes nothing else. Under the cap the classes
+    split last find the most clients masked, so this moves that position.
+    On balanced labels the reversed count matrix is the index-order one with
+    its class columns reversed. natural_per_class only.
 - `natural_per_client` - every client draws a label mix from Dir(alpha*1_C);
   each class's full stock is then split in proportion to that class's column
   of the K x C matrix. As alpha -> inf this converges to the empirical label
@@ -303,6 +310,12 @@ grids are open for training; RQ2 is trained first.
 0.1, 1, 10, 100} (the source paper's grid), 14 runs. The selection rule is in the
 file and was committed before any run: highest mean final-round accuracy over the
 two trials, FedAvg as mu = 0, the smallest mu within 0.01 of the top mean.
+
+`rq2_class_order.yaml` is a diagnostic for RQ2, not an RQ2 arm: rq2.yaml's capped
+FedAvg cell at label-HD 0.45, trials 0-2, with `class_order: reversed` and the
+alpha that cell resolves written out in full. The cap concentrates the classes it
+splits last, so this checks whether the capped arm's per-class accuracy loss
+follows the class or its position in the split order. 3 partitions, 3 runs.
 
 `analysis.partition_validation` applies the rules above: a cell is feasible if
 every one of its partitions is within 0.05 of its label target and its

@@ -19,6 +19,18 @@ clients accordingly - the standard construction from Lin et al. / NIID-Bench.
                   client under N/K can still overshoot it within one class.
                   That overshoot is FedArtML's behaviour and is kept on purpose.
 
+`class_order` selects the order the classes are split in:
+
+    "index"       (default) ascending class index, as FedArtML does.
+    "reversed"    descending class index. Nothing else changes: each class
+                  still draws its shuffle, then its Dirichlet vector, from the
+                  same stream. Under the cap, the classes split last are the ones
+                  that find the most clients masked, so this moves that position
+                  from the highest indices to the lowest. On balanced labels the
+                  k-th class split consumes the same draws in either order, so the
+                  reversed count matrix is the index-order one with its class
+                  columns reversed.
+
 Deliberately not replicated from FedArtML: its per-class reseeding of the global
 np.random (seed += 100 per class) and its hardcoded min_size < 10 redraw. Here
 randomness comes from an explicit Generator - the global np.random state is
@@ -57,6 +69,7 @@ from __future__ import annotations
 import numpy as np
 
 SIZE_CAPS = ("none", "niid_bench")
+CLASS_ORDERS = ("index", "reversed")
 
 
 # Adapted code: _split_by_proportions and the per-class loop in natural_per_class.draw
@@ -70,7 +83,8 @@ SIZE_CAPS = ("none", "niid_bench")
 #                 Copyright (c) 2020 International Business Machines - LICENSES/NIID-Bench-MIT.txt
 #   Changes: explicit np.random.Generator instead of global reseeding (+100 per class);
 #            size-cap balancing term made optional (size_cap); bounded min-size redraw with a
-#            typed MinSizeInfeasible instead of an unbounded loop; zero-mass guard.
+#            typed MinSizeInfeasible instead of an unbounded loop; zero-mass guard;
+#            class processing order made selectable (class_order: index or reversed).
 def _split_by_proportions(idx, proportions, client_indices) -> None:
     cuts = (np.cumsum(proportions) * len(idx)).astype(int)[:-1]
     for client, chunk in zip(client_indices, np.split(idx, cuts)):
@@ -123,6 +137,7 @@ def natural_per_class(
     max_redraws: int = 100,
     size_cap: str = "none",
     stats: dict | None = None,
+    class_order: str = "index",
 ) -> list[np.ndarray]:
     """Partition sample indices across K clients. Returns sorted int32 arrays.
 
@@ -131,8 +146,12 @@ def natural_per_class(
     """
     if size_cap not in SIZE_CAPS:
         raise ValueError(f"size_cap must be one of {SIZE_CAPS}, got {size_cap!r}")
+    if class_order not in CLASS_ORDERS:
+        raise ValueError(f"class_order must be one of {CLASS_ORDERS}, got {class_order!r}")
     labels = np.asarray(labels)
     classes = np.unique(labels)
+    if class_order == "reversed":
+        classes = classes[::-1]
     cap = len(labels) / K
 
     def draw():

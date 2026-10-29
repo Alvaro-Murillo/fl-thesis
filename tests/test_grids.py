@@ -1,6 +1,7 @@
 """Tests for the grid files and their expansion."""
 
 import sys
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -383,3 +384,33 @@ def test_mu_tuning_uses_the_rq3_mid_cell_at_trials_no_reported_grid_trains():
     assert settings == [("fedavg", 0.0)] + [
         ("fedprox", mu) for mu in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0)
     ]
+
+
+def test_the_class_order_grid_is_rq2s_capped_fedavg_cell_at_045_with_classes_reversed():
+    configs = expand(f"{GRIDS}/rq2_class_order.yaml", for_training=True)
+    capped = {
+        c.runtime.trial: c
+        for c in rq2()
+        if c.partition.size_cap == "niid_bench"
+        and c.partition.target_label_hd == 0.45
+        and c.federated.algorithm == "fedavg"
+    }
+    assert len(configs) == 3 and {c.runtime.trial for c in configs} == set(capped)
+    for config in configs:
+        reference = capped[config.runtime.trial]
+        assert config.partition.class_order == "reversed"
+        assert config.partition.alpha == reference.partition.alpha  # the same float
+        assert config.partition.target_label_hd is None
+        assert config.partition.calibration_id is None
+        as_reference = replace(
+            config,
+            partition=replace(
+                config.partition,
+                class_order="index",
+                target_label_hd=reference.partition.target_label_hd,
+                calibration_id=reference.partition.calibration_id,
+            ),
+        )
+        assert as_reference == reference
+        assert seeds_for(config) == seeds_for(reference)
+        assert pid(config) != pid(reference)

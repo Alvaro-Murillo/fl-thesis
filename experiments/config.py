@@ -23,6 +23,7 @@ ARCHS = frozenset({"cnn", "dnn"})  # mirrors models.networks.ARCHS
 OPTIMIZERS = frozenset({"adam", "sgd"})
 DEVICES = frozenset({"cuda", "cpu"})
 SIZE_CAPS = ("none", "niid_bench")  # mirrors partitioning.dirichlet.SIZE_CAPS
+CLASS_ORDERS = ("index", "reversed")  # mirrors partitioning.dirichlet.CLASS_ORDERS
 DEFAULT_MAX_REDRAWS = 1000
 
 
@@ -70,12 +71,19 @@ class PartitionConfig:
     max_redraws: int = DEFAULT_MAX_REDRAWS  # min-size redraw budget; exhausted = infeasible row
     quantity_floor: int | None = None  # size floor in samples; None = 3 * num_classes + 1
     quantity_calibration_id: str | None = None  # calibration/{id}.json: target_quantity_hd -> beta
+    class_order: str = "index"  # natural_per_class: order the classes are split in
 
     def __post_init__(self):
         if self.size_cap not in SIZE_CAPS:
             raise ValueError(f"size_cap must be one of {SIZE_CAPS}, got {self.size_cap!r}")
         if self.size_cap != "none" and self.mode is not PartitionMode.NATURAL_PER_CLASS:
             raise ValueError(f"size_cap applies to natural_per_class only, not {self.mode.value}")
+        if self.class_order not in CLASS_ORDERS:
+            raise ValueError(f"class_order must be one of {CLASS_ORDERS}, got {self.class_order!r}")
+        if self.class_order != "index" and self.mode is not PartitionMode.NATURAL_PER_CLASS:
+            raise ValueError(
+                f"class_order applies to natural_per_class only, not {self.mode.value}"
+            )
         if self.max_redraws < 1:
             raise ValueError(f"max_redraws must be >= 1, got {self.max_redraws}")
         if self.quantity_floor is not None:
@@ -237,6 +245,7 @@ _ADDED_FIELD_DEFAULTS = {
         "max_redraws": DEFAULT_MAX_REDRAWS,
         "quantity_floor": None,
         "quantity_calibration_id": None,
+        "class_order": "index",
     }
 }
 

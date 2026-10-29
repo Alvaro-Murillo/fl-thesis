@@ -96,7 +96,8 @@ def build_partition(config, rng, labels=None, stats: dict | None = None):
             stats["n_redraws"] = 0
         return labels, client_indices
     if p.mode is PartitionMode.NATURAL_PER_CLASS:
-        partitioner, kwargs = natural_per_class, {"size_cap": p.size_cap}
+        partitioner = natural_per_class
+        kwargs = {"size_cap": p.size_cap, "class_order": p.class_order}
     elif p.mode is PartitionMode.NATURAL_PER_CLIENT:
         partitioner, kwargs = natural_per_client, {}
     else:
@@ -166,6 +167,7 @@ def _row_header(config, pid: str, partition_seed: int) -> dict:
         "target_quantity_hd": p.target_quantity_hd,
         "min_size_policy": p.min_size_policy,
         "size_cap": p.size_cap,
+        "class_order": p.class_order,
         "max_redraws": p.max_redraws,
         "quantity_floor": resolved_quantity_floor(config),
         "trial": config.runtime.trial,
@@ -229,6 +231,8 @@ def describe(row: dict) -> str:
         )
     else:
         knobs = f"cap={row['size_cap']:<10} K={row['K']:<3} alpha={row['alpha']:<7g}"
+        if row.get("class_order", "index") != "index":  # absent from rows recorded before it
+            knobs += f" order={row['class_order']}"
     head = f"{row['partition_id']}  {row['mode']:<18} {knobs} trial={row['trial']}"
     if row["status"] != "generated":
         return f"{head}  INFEASIBLE after {row['n_redraws']} draws"
