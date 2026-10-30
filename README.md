@@ -600,4 +600,31 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   - Measured: 11.7 min per FedAvg run and 13.5 min per FedProx run (2.2 and 2.5
     ms/step), so RQ2 and RQ3 take about 15 h each
 - `rq2.yaml` and `rq3.yaml` unblocked for training
-- Next: train RQ2, then RQ3
+- RQ2 trained (`rq2.yaml`, 72 runs, 40 rounds x 10 epochs, trials 0-2, all at
+  5985861 on a clean tree). Means of 3 trials, no significance tests yet
+  - FedAvg final accuracy at label-HD 0 / 0.25 / 0.45 / 0.70: natural uncapped
+    0.669, 0.659, 0.642, 0.537; natural niid_bench 0.669, 0.647, 0.616, 0.531;
+    pure_label 0.672, 0.668, 0.642, 0.561. Little loss up to 0.45, 0.11-0.14 at 0.70
+  - The capped natural arm is lower than the other two at 0.25 and 0.45, though its
+    incidental quantity-HD is smaller than the uncapped arm's
+  - FedProx (mu = 0.001) is higher than FedAvg at 0.70 in all 9 paired runs (+0.014
+    to +0.017 in the means); at 0.45 and below the paired differences are within
+    +/-0.01 and mixed in sign
+  - At label-HD 0 the two natural arms train identical partitions (the cap does not
+    bind at alpha = 1000), so their runs are identical too
+- RQ3 trained (`rq3.yaml`, 72 runs, all at 7b7947d on a clean tree; that commit
+  changes natural_per_class only, so no rq3 config hash moved). Means of 3 trials
+  - FedAvg final accuracy, label-HD 0 / 0.25 / 0.45 / 0.70 by quantity-HD 0 / 0.35 /
+    0.70: 0.661, 0.673, 0.667; 0.656, 0.663, 0.653; 0.639, 0.646, 0.641; 0.559,
+    0.550, 0.524
+  - Quantity skew alone does not lower final accuracy (+0.012 at 0.35, +0.007 at
+    0.70). At 0.70 accuracy peaks at 0.70-0.71 in rounds 2-3 and then falls by
+    0.035-0.045, as in the pipeline check's quantity-skew run
+  - Interaction, acc(L, Q) - acc(L, 0) - acc(0, Q) + acc(0, 0) per trial: at
+    label-HD 0.70 the combined skew costs more than the two single skews added,
+    -0.021 at quantity 0.35 and -0.041 at 0.70 (FedAvg); at label-HD 0.25 and 0.45
+    it is -0.004 to -0.010
+  - FedProx is higher than FedAvg in 29 of 36 paired runs, most at quantity 0.70
+    (+0.010 to +0.034)
+  - Measured: 11.2-11.3 min per FedAvg run and 13.1-13.6 min per FedProx run, about
+    15 h per grid
