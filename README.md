@@ -641,3 +641,8 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     (+0.010 to +0.034)
   - Measured: 11.2-11.3 min per FedAvg run and 13.1-13.6 min per FedProx run, about
     15 h per grid
+- Centralized baseline (`config/grids/centralized.yaml`, trials 0-2, 10 epochs, all
+  at 279ccff on a clean tree): final accuracy 0.7052, 0.7106 and 0.7019, mean
+  0.7059 +/- 0.0044. The source paper reports 70.50% +/- 0.60% over ten trials
+  (Table 3 in v2), without its epoch count. About 18 s per run; a rerun of trial 0
+  is bit-exact
