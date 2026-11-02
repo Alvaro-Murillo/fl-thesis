@@ -1,0 +1,43 @@
+# Centralized baseline: the whole CIFAR-10 training set as one client, no
+# federation. The model, optimizer, learning rate and batch size are base.yaml's.
+# It trains for 10 epochs with one Adam, one round's local training on the pooled
+# data, and the epoch count is fixed here, not picked by test accuracy. The test
+# set is evaluated after every epoch; final_acc, after epoch 10, is the baseline.
+#
+# The source paper reports 70.50% +/- 0.60% for centralized CIFAR-10 over ten
+# trials (Jimenez-Gutierrez et al., arXiv:2503.17070, Table 3 in v2, Table II in
+# v1) and does not state its epoch count.
+#
+#   python -m experiments.run_training --grid config/grids/centralized.yaml
+
+dataset:
+  name: cifar10
+  num_classes: 10
+  root: data
+  val_split: 0.0
+
+partition: null
+
+model:
+  arch: cnn
+  in_channels: 3
+  num_classes: 10
+
+federated:
+  algorithm: centralized
+  rounds: 1
+  local_epochs: 10
+  batch_size: 64
+  lr: 0.001
+  mu: 0.0
+  optimizer: adam
+  client_fraction: 1.0
+
+runtime:
+  trial: 0
+  deterministic: true
+  device: cuda
+  out_dir: results
+  partition_seed: null
+  init_seed: null
+  train_seed: null

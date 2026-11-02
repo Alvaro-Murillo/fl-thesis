@@ -21,7 +21,8 @@ expand with `for_training=False`.
 A cell may give target_label_hd / target_quantity_hd with alpha / beta null:
 the parameter is then resolved from the curve named by calibration_id /
 quantity_calibration_id, and target 0 means no skew on that axis
-(`partitioning.calibration.resolve_targets`).
+(`partitioning.calibration.resolve_targets`). A centralized cell has no
+partition, so nothing is resolved for it.
 
 AI assistance: drafted with Claude Code (Anthropic) from the author's specification; reviewed and tested by the author.
 """
@@ -79,8 +80,10 @@ def expand(
     configs = []
     for case in grid.get("cases") or [{}]:
         for combination in itertools.product(*sweep.values()):
-            cell = {section: dict(values) for section, values in base.items()}
+            cell = {s: None if values is None else dict(values) for s, values in base.items()}
             _apply(cell, case)
             _apply(cell, dict(zip(sweep, combination)))
-            configs.append(from_dict(resolve_targets(cell, calibration_dir)))
+            if cell["partition"] is not None:
+                resolve_targets(cell, calibration_dir)
+            configs.append(from_dict(cell))
     return configs

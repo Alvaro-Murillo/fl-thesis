@@ -78,6 +78,22 @@ def test_summary_mean_sd_and_realized_hd(tmp_path):
     assert single["realized_label_hd_mean"] == pytest.approx(0.30)  # shares trial 0's partition
 
 
+def test_a_centralized_condition_has_no_partition_columns(tmp_path):
+    data = to_dict(load_config("config/centralized.yaml"))
+    data["runtime"]["out_dir"] = str(tmp_path)
+    for trial, curve in enumerate([[0.5, 0.6], [0.55, 0.65]]):
+        data["runtime"]["trial"] = trial
+        with RunRecorder(from_dict(data), None) as rec:
+            rec.log_initial(0.1, 2.3)
+            for epoch, acc in enumerate(curve, 1):
+                rec.log_round(epoch, acc, 1.0, 1.0, 0.5)
+    row = summary_table(runs_table(tmp_path), tmp_path).iloc[0]
+    assert row["algorithm"] == "centralized" and row["n_runs"] == 2
+    assert all(pd.isna(row[column]) for column in ("K", "mode", "alpha", "beta"))
+    assert np.isnan(row["realized_label_hd_mean"])
+    assert row["final_acc_mean"] == pytest.approx(0.625)
+
+
 def test_rta_of_the_mean_curve_differs_from_the_mean_rta(tmp_path):
     """Two fast runs and a slow one: rta 1, 1 and 3, but the mean curve gets there at 3."""
     record(cell(tmp_path, 0), [0.60, 0.60, 0.60])

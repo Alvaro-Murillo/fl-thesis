@@ -18,7 +18,9 @@ is the grid's. Writes, under {out_dir}/analysis/:
 A condition is a config without its runtime section (dataset, partition, model
 and federated settings), so its trials are its replicates; `condition_id` is
 the config_hash it would have with the default runtime. A target that names a
-level is not its value: the realized HD columns are what the analysis uses.
+level is not its value: the realized HD columns are what the analysis uses. A
+centralized run has no partition, so its partition and HD columns are empty, and
+its rounds are epochs (`experiments.run_training`).
 
 final_acc is the test accuracy after the last round and best_acc the highest
 after any round; round 0, the untrained model, counts for neither. rta is the
@@ -60,8 +62,7 @@ from experiments.recording import (
 )
 
 PREFIX = "training"
-CONDITION_COLUMNS = (
-    "dataset",
+PARTITION_COLUMNS = (
     "K",
     "mode",
     "size_cap",
@@ -69,11 +70,8 @@ CONDITION_COLUMNS = (
     "beta",
     "target_label_hd",
     "target_quantity_hd",
-    "algorithm",
-    "mu",
-    "rounds",
-    "local_epochs",
 )
+CONDITION_COLUMNS = ("dataset", *PARTITION_COLUMNS, "algorithm", "mu", "rounds", "local_epochs")
 METRICS = ("final_acc", "best_acc", "rta")
 HD_COLUMNS = ("realized_label_hd", "realized_quantity_hd")
 
@@ -84,16 +82,24 @@ def condition_id(config) -> str:
 
 
 def condition_fields(config) -> dict:
+    """The condition's columns. A centralized run has no partition: those columns are None."""
     p, f = config.partition, config.federated
+    partition = (
+        dict.fromkeys(PARTITION_COLUMNS)
+        if p is None
+        else {
+            "K": p.K,
+            "mode": p.mode.value,
+            "size_cap": p.size_cap,
+            "alpha": p.alpha,
+            "beta": p.beta,
+            "target_label_hd": p.target_label_hd,
+            "target_quantity_hd": p.target_quantity_hd,
+        }
+    )
     return {
         "dataset": config.dataset.name,
-        "K": p.K,
-        "mode": p.mode.value,
-        "size_cap": p.size_cap,
-        "alpha": p.alpha,
-        "beta": p.beta,
-        "target_label_hd": p.target_label_hd,
-        "target_quantity_hd": p.target_quantity_hd,
+        **partition,
         "algorithm": f.algorithm,
         "mu": f.mu,
         "rounds": f.rounds,

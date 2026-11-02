@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import yaml
 
-from experiments.config import PartitionMode, to_dict
+from experiments.config import PartitionMode, config_hash, to_dict
 from experiments.grid import GridBlocked, GridIncomplete, expand
 from experiments.recording import partition_id, read_jsonl
 from experiments.seeding import seeds_for
@@ -230,6 +230,13 @@ def test_rq2_and_rq3_are_open_for_training(name):
     assert "status" not in grid and "blocked_on" not in grid
     assert "partition_only" not in grid
     assert len(expand(f"{GRIDS}/{name}", for_training=True)) == 72
+
+
+def test_the_centralized_grid_is_trials_0_to_2_with_no_partition():
+    configs = expand(f"{GRIDS}/centralized.yaml", for_training=True)
+    assert [c.runtime.trial for c in configs] == [0, 1, 2]
+    assert all(c.partition is None and c.federated.algorithm == "centralized" for c in configs)
+    assert len({config_hash(c) for c in configs}) == 3
 
 
 # --- what a grid may be expanded for ----------------------------------------

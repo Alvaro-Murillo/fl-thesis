@@ -58,13 +58,14 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - run_partition.py - generate and record one partition
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
   - run_training.py - train one config or a whole grid on stored partitions, with
-    resume
+    resume; a centralized config trains the baseline and reads no partition
   - quantity_levels.py - the 20-seed feasibility check of a grid's quantity levels
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
   smoke_combined.yaml, the pipeline-check configs sanity_iid.yaml,
-  sanity_label_skew.yaml and sanity_quantity_skew.yaml, and grids/ (rq1.yaml,
-  rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, quantity_skew.yaml,
-  mu_tuning.yaml and rq2_class_order.yaml)
+  sanity_label_skew.yaml and sanity_quantity_skew.yaml, the centralized baseline
+  centralized.yaml, and grids/ (rq1.yaml, rq2.yaml, rq3.yaml, the partition-only
+  rq3_edge.yaml, quantity_skew.yaml, mu_tuning.yaml, rq2_class_order.yaml and
+  centralized.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -104,10 +105,15 @@ skipped unless `--force` is passed, and a failed or killed run is trained again:
     python -m experiments.run_training --config config/smoke.yaml
     python -m experiments.run_training --grid config/grids/rq3.yaml
 
+Train the centralized baseline, trials 0-2 (no partition; about 20 s per run):
+
+    python -m experiments.run_training --grid config/grids/centralized.yaml
+
 Summarise completed runs across trials (all runs, or one grid's):
 
     python -m analysis.training_summary
     python -m analysis.training_summary --grid config/grids/rq3.yaml
+    python -m analysis.training_summary --grid config/grids/centralized.yaml --prefix centralized
 
 Build an alpha -> label-HD calibration curve (writes `calibration/{id}.json`):
 
@@ -316,6 +322,13 @@ FedAvg cell at label-HD 0.45, trials 0-2, with `class_order: reversed` and the
 alpha that cell resolves written out in full. The cap concentrates the classes it
 splits last, so this checks whether the capped arm's per-class accuracy loss
 follows the class or its position in the split order. 3 partitions, 3 runs.
+
+`centralized.yaml` is the centralized baseline (config/centralized.yaml) at trials
+0-2: `federated.algorithm: centralized` with `partition: null`, the whole training
+set as one client, 10 epochs with one Adam (one round's local training, on the
+pooled data), base.yaml's model, learning rate and batch size. The epoch count is
+fixed in the config, not picked by test accuracy. Trial t has the federated runs'
+init seed at trial t. history.csv holds one row per epoch, and rta counts epochs.
 
 `analysis.partition_validation` applies the rules above: a cell is feasible if
 every one of its partitions is within 0.05 of its label target and its

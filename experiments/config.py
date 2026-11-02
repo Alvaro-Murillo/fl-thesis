@@ -18,7 +18,7 @@ from typing import Any
 
 import yaml
 
-ALGORITHMS = frozenset({"fedavg", "fedprox"})
+ALGORITHMS = frozenset({"fedavg", "fedprox", "centralized"})
 ARCHS = frozenset({"cnn", "dnn"})  # mirrors models.networks.ARCHS
 OPTIMIZERS = frozenset({"adam", "sgd"})
 DEVICES = frozenset({"cuda", "cpu"})
@@ -143,6 +143,10 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class FederatedConfig:
+    """The training settings. `centralized` is the baseline with no federation: the whole
+    training set as one client, trained for local_epochs epochs with one optimizer, so its
+    rounds is 1 (one round's local training, on the pooled data)."""
+
     algorithm: str
     rounds: int
     local_epochs: int
@@ -157,8 +161,13 @@ class FederatedConfig:
             raise ValueError(f"algorithm must be one of {sorted(ALGORITHMS)}")
         if self.optimizer not in OPTIMIZERS:
             raise ValueError(f"optimizer must be one of {sorted(OPTIMIZERS)}")
-        if self.algorithm == "fedavg" and self.mu != 0.0:
-            raise ValueError("mu is a FedProx parameter; fedavg requires mu = 0")
+        if self.algorithm != "fedprox" and self.mu != 0.0:
+            raise ValueError(f"mu is a FedProx parameter; {self.algorithm} requires mu = 0")
+        if self.algorithm == "centralized" and (self.rounds != 1 or self.client_fraction != 1.0):
+            raise ValueError(
+                "centralized trains local_epochs epochs on the pooled data: "
+                "rounds must be 1 and client_fraction 1.0"
+            )
         if self.algorithm == "fedprox" and self.mu <= 0.0:
             raise ValueError("fedprox requires mu > 0")
         if min(self.rounds, self.local_epochs, self.batch_size) < 1:
@@ -189,7 +198,7 @@ class RuntimeConfig:
 @dataclass(frozen=True)
 class ExperimentConfig:
     dataset: DatasetConfig
-    partition: PartitionConfig
+    partition: PartitionConfig | None  # None (`partition: null`) for a centralized run only
     model: ModelConfig
     federated: FederatedConfig
     runtime: RuntimeConfig = RuntimeConfig()
@@ -199,6 +208,10 @@ class ExperimentConfig:
             raise ValueError(
                 f"model.num_classes ({self.model.num_classes}) != "
                 f"dataset.num_classes ({self.dataset.num_classes})"
+            )
+        if (self.partition is None) != (self.federated.algorithm == "centralized"):
+            raise ValueError(
+                "a centralized run has no partition (partition: null); every federated run has one"
             )
 
 
@@ -212,7 +225,9 @@ _SECTION_TYPES = {
 }
 
 
-def _build(section: str, values: dict[str, Any]):
+def _build(section: str, values: dict[str, Any] | None):
+    if section == "partition" and values is None:
+        return None
     cls = _SECTION_TYPES[section]
     known = {f.name for f in fields(cls)}
     unknown = set(values) - known
@@ -254,6 +269,8 @@ def config_hash(config: ExperimentConfig) -> str:
     """First 8 hex chars of the sha256 of the canonical (key-sorted) config."""
     data = to_dict(config)
     for section, defaults in _ADDED_FIELD_DEFAULTS.items():
+        if data[section] is None:  # a centralized run's partition
+            continue
         for key, default in defaults.items():
             if data[section][key] == default:
                 del data[section][key]

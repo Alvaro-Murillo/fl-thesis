@@ -1,7 +1,8 @@
-"""Train one config, or every cell of a grid: the federated runs.
+"""Train one config, or every cell of a grid: the federated runs and the centralized baseline.
 
     python -m experiments.run_training --config config/smoke.yaml
     python -m experiments.run_training --grid config/grids/rq3.yaml
+    python -m experiments.run_training --grid config/grids/centralized.yaml
 
 Training reads partitions and never makes them. A cell's partition must already
 be in the store (`experiments.run_partition`, `experiments.run_grid`), so every
@@ -48,6 +49,14 @@ completed (same config_hash in runs.jsonl) is skipped unless --force is given; a
 failed or killed run is trained again. A sweep loads each dataset once, keeps it
 on the device for every run, and stops at the first run that fails.
 
+A centralized config (`federated.algorithm: centralized`, `partition: null`) reads no
+partition. `federated.centralized.train_centralized` trains the model on the whole
+training set for local_epochs epochs with one optimizer and the run's train seed, and
+the run is recorded the same way, with an epoch in place of a round: history.csv has
+one row per epoch (round 0 is again the untrained model), clients.csv one row per
+epoch for the single client, and rta counts epochs. Its init seed is a federated run's
+at the same trial, so trial t starts from the same weights in both.
+
 CUBLAS_WORKSPACE_CONFIG must be set before torch is imported, so when this
 module runs as a script it sets it before its other imports.
 
@@ -82,6 +91,7 @@ from experiments.recording import (
 from experiments.seeding import configure_torch, seeds_for
 from experiments.tensors import TensorData, load_tensors
 from federated.aggregation import fedavg
+from federated.centralized import EpochResult, train_centralized
 from federated.data import FederatedData
 from federated.loop import MakeOptimizer, RoundResult, evaluate, run_federated
 from models.networks import build_model
@@ -118,7 +128,12 @@ def train_loss(result: RoundResult) -> float:
 
 
 def partition_problem(config: ExperimentConfig) -> str | None:
-    """Why this config's partition cannot be trained on; None if it is in the store."""
+    """Why this config's partition cannot be trained on; None if it is in the store.
+
+    None for a centralized config, which reads no partition.
+    """
+    if config.partition is None:
+        return None
     pid = partition_id(config, seeds_for(config).partition)
     out_dir = config.runtime.out_dir
     if partition_exists(out_dir, pid):
@@ -144,30 +159,34 @@ def stored_partition(config: ExperimentConfig) -> tuple[str, list[np.ndarray]]:
 def train(
     config: ExperimentConfig,
     tensors: TensorData | None = None,
-    on_round: Callable[[RoundResult], None] | None = None,
-) -> list[RoundResult]:
+    on_round: Callable[[RoundResult], None] | Callable[[EpochResult], None] | None = None,
+) -> list[RoundResult] | list[EpochResult]:
     """Train one config and record it, whether or not it ran before.
 
     `tensors` is the config's dataset on runtime.device, loaded here if None.
     Nothing is recorded if the partition is unavailable; once training starts, an
-    exception is recorded as a failed run and re-raised.
+    exception is recorded as a failed run and re-raised. A centralized config
+    returns, and passes to `on_round`, one EpochResult per epoch.
     """
     if config.dataset.val_split != 0.0:
         raise NotImplementedError("no validation split is implemented; set dataset.val_split: 0")
     device = config.runtime.device
     if device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("runtime.device is cuda, but no CUDA device is available")
-    pid, client_indices = stored_partition(config)
+    centralized = config.partition is None
+    pid, client_indices = (None, None) if centralized else stored_partition(config)
     seeds = seeds_for(config)
     configure_torch(seeds, config.runtime.deterministic)
     if tensors is None:
         tensors = load_tensors(config.dataset, device)
-    data = FederatedData(tensors.train_x, tensors.train_y, client_indices)
     model = build_model(config.model, tensors.input_shape, seeds.init).to(device)
     federated = config.federated
 
     with RunRecorder(config, pid) as recorder:
         recorder.log_initial(*evaluate(model, tensors.test_x, tensors.test_y))
+        if centralized:
+            return _train_centralized(model, tensors, federated, seeds.train, recorder, on_round)
+        data = FederatedData(tensors.train_x, tensors.train_y, client_indices)
 
         def record(result: RoundResult) -> None:
             recorder.log_round(
@@ -200,8 +219,46 @@ def train(
         )
 
 
+def _train_centralized(
+    model: torch.nn.Module,
+    tensors: TensorData,
+    federated,
+    train_seed: int,
+    recorder: RunRecorder,
+    on_epoch: Callable[[EpochResult], None] | None,
+) -> list[EpochResult]:
+    """The centralized baseline, each epoch recorded where a federated run records a round."""
+    n_train = len(tensors.train_y)
+
+    def record(result: EpochResult) -> None:
+        recorder.log_round(
+            result.epoch, result.test_acc, result.test_loss, result.train_loss, result.wall_s
+        )
+        recorder.log_clients(result.epoch, [0], [n_train], [result.train_loss], [result.steps])
+        if on_epoch is not None:
+            on_epoch(result)
+
+    return train_centralized(
+        model,
+        tensors.train_x,
+        tensors.train_y,
+        tensors.test_x,
+        tensors.test_y,
+        epochs=federated.local_epochs,
+        batch_size=federated.batch_size,
+        make_optimizer=optimizer_factory(federated),
+        train_seed=train_seed,
+        on_epoch=record,
+    )
+
+
 def describe(config: ExperimentConfig) -> str:
     p, f = config.partition, config.federated
+    if p is None:
+        return (
+            f"{config_hash(config)}  centralized {f.local_epochs} epochs  "
+            f"trial={config.runtime.trial}"
+        )
     knobs = " ".join(
         f"{name}={value:g}" for name, value in (("alpha", p.alpha), ("beta", p.beta)) if value
     )
@@ -216,6 +273,13 @@ def describe(config: ExperimentConfig) -> str:
 def describe_round(result: RoundResult, rounds: int) -> str:
     return (
         f"  round {result.round:>3}/{rounds}  acc {result.test_acc:.4f}  "
+        f"loss {result.test_loss:.4f}  {result.wall_s:.1f} s"
+    )
+
+
+def describe_epoch(result: EpochResult, epochs: int) -> str:
+    return (
+        f"  epoch {result.epoch:>3}/{epochs}  acc {result.test_acc:.4f}  "
         f"loss {result.test_loss:.4f}  {result.wall_s:.1f} s"
     )
 
@@ -248,8 +312,10 @@ def train_all(
         key = (config.dataset, config.runtime.device)
         if key not in tensors:
             tensors[key] = load_tensors(*key)
-        rounds = config.federated.rounds
-        train(config, tensors[key], lambda result: log(describe_round(result, rounds)))
+        centralized, f = config.partition is None, config.federated
+        describe_step = describe_epoch if centralized else describe_round
+        steps = f.local_epochs if centralized else f.rounds
+        train(config, tensors[key], lambda result: log(describe_step(result, steps)))
     return len(pending), len(configs) - len(pending)
 
 

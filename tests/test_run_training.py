@@ -38,6 +38,7 @@ from experiments.run_training import (
 )
 from experiments.seeding import seeds_for
 from federated.aggregation import fedavg
+from federated.centralized import train_centralized
 from federated.data import FederatedData
 from federated.loop import RoundResult, evaluate, run_federated
 from models.networks import build_model
@@ -92,6 +93,22 @@ def toy_config(out_dir, overrides=None, generate=True):
     if generate:
         generate_partition(config)
     return config
+
+
+def centralized_config(out_dir, overrides=None):
+    """The toy dataset trained centrally on CPU: no partition, 3 epochs."""
+    data = to_dict(toy_config(out_dir, generate=False))
+    data["partition"] = None
+    data["federated"].update(algorithm="centralized", rounds=1, local_epochs=3)
+    for key, value in (overrides or {}).items():
+        section, field = key.split(".")
+        data[section][field] = value
+    return from_dict(data)
+
+
+def epoch_numbers(results):
+    """Everything an EpochResult reports except its wall time."""
+    return [(r.epoch, r.train_loss, r.test_acc, r.test_loss, r.steps) for r in results]
 
 
 def numbers(results):
@@ -352,6 +369,76 @@ def test_command_line_trains_a_grid(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["run_training", "--config", str(base)])
     run_training.main()
     assert capsys.readouterr().out.splitlines()[-1] == "1 runs: 0 trained, 1 already completed"
+
+
+# --- the centralized baseline -------------------------------------------------------------
+
+
+def test_a_centralized_run_is_recorded_end_to_end(tmp_path):
+    config = centralized_config(tmp_path)
+    results = train(config)
+    assert not (tmp_path / "partitions").exists()  # no partition read or made
+
+    rows = read_jsonl(runs_path(tmp_path))
+    assert [row["status"] for row in rows] == ["running", "completed"]
+    final = rows[-1]
+    assert final["algorithm"] == "centralized" and final["partition_id"] is None
+    assert (final["rounds"], final["local_epochs"]) == (1, 3)
+    assert final["final_acc"] == results[-1].test_acc
+    assert final["best_acc"] == max(r.test_acc for r in results)
+    assert final["rta"] == rounds_to_accuracy([r.test_acc for r in results])
+    assert skip_if_exists(config)
+
+    initial, *epochs = history(config)
+    assert initial["round"] == "0" and initial["train_loss"] == ""
+    assert [int(row["round"]) for row in epochs] == [1, 2, 3]
+    for row, result in zip(epochs, results, strict=True):
+        assert float(row["global_test_acc"]) == result.test_acc
+        assert float(row["global_test_loss"]) == result.test_loss
+        assert float(row["train_loss"]) == result.train_loss
+        assert float(row["round_wall_s"]) == result.wall_s
+
+    clients = [
+        (int(c["round"]), int(c["client"]), int(c["num_samples"]), int(c["steps"]))
+        for c in history(config, "clients.csv")
+    ]
+    assert clients == [(epoch, 0, N_TRAIN, 6) for epoch in (1, 2, 3)]  # ceil(90 / 16) steps
+
+
+def test_centralized_matches_train_centralized_wired_by_hand(tmp_path):
+    """The runner adds nothing: same numbers as train_centralized called directly."""
+    config = centralized_config(tmp_path, {"runtime.trial": 2})
+    results = train(config)
+
+    seeds = seeds_for(config)
+    data = tensors.load_tensors(config.dataset)
+    by_hand = train_centralized(
+        build_model(config.model, data.input_shape, seeds.init),
+        data.train_x,
+        data.train_y,
+        data.test_x,
+        data.test_y,
+        epochs=3,
+        batch_size=16,
+        make_optimizer=lambda params: torch.optim.Adam(params, lr=0.001),
+        train_seed=seeds.train,
+    )
+    assert epoch_numbers(results) == epoch_numbers(by_hand)
+
+
+def test_centralized_starts_from_the_federated_runs_weights_at_the_same_trial(tmp_path):
+    centralized, federated = centralized_config(tmp_path), toy_config(tmp_path, generate=False)
+    assert seeds_for(centralized).init == seeds_for(federated).init
+    assert config_hash(centralized) != config_hash(federated)
+
+
+def test_a_centralized_sweep_needs_no_partition_and_logs_epochs(tmp_path):
+    configs = [centralized_config(tmp_path, {"runtime.trial": t}) for t in (0, 1)]
+    lines = []
+    assert train_all(configs, log=lines.append) == (2, 0)
+    assert sum("centralized 3 epochs" in line for line in lines) == 2
+    assert sum(line.startswith("  epoch   3/3") for line in lines) == 2
+    assert train_all(configs, log=lines.append) == (0, 2)
 
 
 # --- real CIFAR-10 -----------------------------------------------------------------------

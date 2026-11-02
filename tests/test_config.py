@@ -15,7 +15,7 @@ from experiments.config import (
 CONFIG_DIR = "config"
 
 
-@pytest.mark.parametrize("name", ["base.yaml", "smoke.yaml"])
+@pytest.mark.parametrize("name", ["base.yaml", "smoke.yaml", "centralized.yaml"])
 def test_config_roundtrip(name, tmp_path):
     config = load_config(f"{CONFIG_DIR}/{name}")
     out = tmp_path / "dumped.yaml"
@@ -79,6 +79,45 @@ def test_base_config_trains_with_the_source_papers_settings():
     assert (f.optimizer, f.lr, f.batch_size) == ("adam", 0.001, 64)
     assert (f.rounds, f.local_epochs, f.client_fraction) == (40, 10, 1.0)
     assert config.model.arch == "cnn"
+
+
+def test_centralized_config_is_the_base_training_with_no_partition():
+    """10 epochs, one round's local training; model, optimizer, lr and batch are base.yaml's."""
+    config = load_config(f"{CONFIG_DIR}/centralized.yaml")
+    base = load_config(f"{CONFIG_DIR}/base.yaml")
+    assert config.partition is None
+    f, b = config.federated, base.federated
+    assert (f.algorithm, f.rounds, f.local_epochs) == ("centralized", 1, b.local_epochs)
+    assert (f.optimizer, f.lr, f.batch_size, f.mu) == (b.optimizer, b.lr, b.batch_size, 0.0)
+    assert (config.dataset, config.model, config.runtime) == (
+        base.dataset,
+        base.model,
+        base.runtime,
+    )
+
+
+@pytest.mark.parametrize(
+    "section, changes, match",
+    [
+        ("federated", {"rounds": 2}, "rounds must be 1"),
+        ("federated", {"client_fraction": 0.5}, "client_fraction 1.0"),
+        ("federated", {"mu": 0.01}, "centralized requires mu = 0"),
+        ("federated", {"algorithm": "fedavg"}, "every federated run has one"),
+    ],
+)
+def test_centralized_settings_are_checked(section, changes, match):
+    data = to_dict(load_config(f"{CONFIG_DIR}/centralized.yaml"))
+    data[section].update(changes)
+    with pytest.raises(ValueError, match=match):
+        from_dict(data)
+
+
+def test_a_centralized_run_has_no_partition():
+    data = to_dict(load_config(f"{CONFIG_DIR}/base.yaml"))
+    data["federated"]["algorithm"] = "centralized"
+    data["federated"]["rounds"] = 1
+    with pytest.raises(ValueError, match=r"partition: null"):
+        from_dict(data)
 
 
 def test_smoke_config_hash_is_stable():
