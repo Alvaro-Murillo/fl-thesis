@@ -1,5 +1,6 @@
-# Class-order check for RQ2's capped arm: rq2.yaml's capped FedAvg cell at
-# label-HD 0.45, with the classes split in reversed index order (9, 8, ..., 0).
+# Class-order check for RQ2's capped arm: rq2.yaml's capped FedAvg cells at
+# label-HD 0.25, 0.45 and 0.70, with the classes split in reversed index order
+# (9, 8, ..., 0).
 #
 # The NIID-Bench cap masks full clients class by class, so the classes split last
 # sit on the fewest clients. In index order those are horse, ship and truck, the
@@ -8,26 +9,32 @@
 # the reversed partition's count matrix is the index-order one with its class
 # columns reversed, so client sizes and HD stay the same.
 #
-# A diagnostic for RQ2, not an RQ2 arm. alpha is the value rq2.yaml resolves for
-# the capped arm at label-HD 0.45 (curve 146de82d74), written out in full so the
+# A diagnostic for RQ2, not an RQ2 arm. Each alpha is the value rq2.yaml resolves
+# for the capped arm at that label-HD (curve 146de82d74), written out in full so the
 # Dirichlet draws are the same floats and no curve is read. Every other setting is
-# that cell's, and the partition seeds are the same per trial.
+# that cell's, and the partition seeds are the same per trial. Level 0 is left out:
+# at alpha = 1000 the cap does not bind, so a reversed partition would only relabel
+# an uncapped one. analysis/rq2_class_order.py holds the rule the cells are read by.
 #
 #   python -m experiments.run_grid --grid config/grids/rq2_class_order.yaml
 #   python -m experiments.run_training --grid config/grids/rq2_class_order.yaml
 #
-# 3 partitions, 3 runs.
+# 3 levels x 3 trials = 9 partitions, 9 runs.
 
 base: config/base.yaml
 
 constant:
   partition.mode: natural_per_class
   partition.K: 30
-  partition.alpha: 0.6050899750391434  # rq2.yaml, niid_bench arm, target_label_hd 0.45
   partition.size_cap: niid_bench
   partition.class_order: reversed
   partition.min_size_policy: 10
   federated.algorithm: fedavg
+
+cases:
+  - partition.alpha: 2.578984007645313  # rq2.yaml, niid_bench arm, target_label_hd 0.25
+  - partition.alpha: 0.6050899750391434  # rq2.yaml, niid_bench arm, target_label_hd 0.45
+  - partition.alpha: 0.0973256177386462  # rq2.yaml, niid_bench arm, target_label_hd 0.70
 
 sweep:
   runtime.trial: [0, 1, 2]

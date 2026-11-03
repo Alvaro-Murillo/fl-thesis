@@ -60,6 +60,9 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - run_training.py - train one config or a whole grid on stored partitions, with
     resume; a centralized config trains the baseline and reads no partition
   - quantity_levels.py - the 20-seed feasibility check of a grid's quantity levels
+  - per_class_accuracy.py - per-class test accuracy of recorded runs, by retraining
+    them through run_training's calls; a rerun that does not reproduce its recorded
+    run bit for bit is refused
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
   smoke_combined.yaml, the pipeline-check configs sanity_iid.yaml,
   sanity_label_skew.yaml and sanity_quantity_skew.yaml, the centralized baseline
@@ -78,6 +81,9 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
     grid, per-client label histograms, and the feasibility map
   - training_summary.py - final accuracy and rounds-to-accuracy per condition, mean
     and sd across trials, with each condition's realized HD
+  - rq2_class_order.py - RQ2's class-order check: per-class tables, the rule fixed
+    before the per-class data it covers, and how concentrated each class is across
+    clients
 
 ## Usage
 
@@ -114,6 +120,21 @@ Summarise completed runs across trials (all runs, or one grid's):
     python -m analysis.training_summary
     python -m analysis.training_summary --grid config/grids/rq3.yaml
     python -m analysis.training_summary --grid config/grids/centralized.yaml --prefix centralized
+
+Per-class test accuracy of recorded runs: each selected run is retrained and must
+reproduce its final accuracy and every round of its history.csv bit for bit, or the
+sweep stops (about one run's time per run; nothing is recorded in runs.jsonl).
+`--where` narrows a grid by dotted keys, `--list` prints the plan, and `--import`
+checks and copies per-class results made earlier with the same calls:
+
+    python -m experiments.per_class_accuracy --grid config/grids/rq2_class_order.yaml
+    python -m experiments.per_class_accuracy --grid config/grids/rq2.yaml --where federated.algorithm=fedavg partition.mode=natural_per_class partition.target_label_hd=0.7
+
+RQ2's class-order check, from the stored partitions and the per-class results
+(`--partitions`: the concentration tables only, no per-class data needed):
+
+    python -m analysis.rq2_class_order --partitions
+    python -m analysis.rq2_class_order
 
 Build an alpha -> label-HD calibration curve (writes `calibration/{id}.json`):
 
@@ -318,10 +339,13 @@ file and was committed before any run: highest mean final-round accuracy over th
 two trials, FedAvg as mu = 0, the smallest mu within 0.01 of the top mean.
 
 `rq2_class_order.yaml` is a diagnostic for RQ2, not an RQ2 arm: rq2.yaml's capped
-FedAvg cell at label-HD 0.45, trials 0-2, with `class_order: reversed` and the
-alpha that cell resolves written out in full. The cap concentrates the classes it
-splits last, so this checks whether the capped arm's per-class accuracy loss
-follows the class or its position in the split order. 3 partitions, 3 runs.
+FedAvg cells at label-HD 0.25, 0.45 and 0.70, trials 0-2, with `class_order:
+reversed` and the alpha each cell resolves written out in full. The cap concentrates
+the classes it splits last, so this checks whether the capped arm's per-class
+accuracy loss follows the class or its position in the split order. Level 0 is left
+out, since the cap does not bind there. 9 partitions, 9 runs; the 0.45 runs keep the
+ids they were trained under before the other levels were added. The rule the cells
+are read by is in `analysis/rq2_class_order.py`.
 
 `centralized.yaml` is the centralized baseline (config/centralized.yaml) at trials
 0-2: `federated.algorithm: centralized` with `partition: null`, the whole training
@@ -371,6 +395,12 @@ Everything lands under `results/` (gitignored), written atomically:
   condition (a config without its runtime section): mean and sample sd across
   trials of `final_acc`, `best_acc` and `rta`, mean realized HD, and
   `rta_of_mean_curve` (RTA of the trials' mean accuracy curve)
+- `per_class/{run_id}.json` - a rerun's confusion matrix on the test set after every
+  round (round 0 first), its accuracies, and each bit-exactness check against the
+  recorded run
+- `analysis/rq2_class_order_*` - `per_class.csv` (one row per level, arm, trial and
+  class: accuracy, holders, effective holders, zero-holders), `verdicts.csv` (one
+  row per level), `tables.md`, and `partitions.md` (concentration only)
 
 Partitions are addressed by the fields that determine the split, so training
 knobs never invalidate a cached partition, and FedAvg and FedProx at the same
@@ -646,3 +676,9 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   0.7059 +/- 0.0044. The source paper reports 70.50% +/- 0.60% over ten trials
   (Table 3 in v2), without its epoch count. About 18 s per run; a rerun of trial 0
   is bit-exact
+- Class-order check extended from label-HD 0.45 to 0.25 and 0.70
+  (`rq2_class_order.yaml`, 9 cells, 6 of them new), with per-class reruns as a
+  module (`experiments.per_class_accuracy`) and the check's tables and rule in
+  `analysis.rq2_class_order`. The rule is the one used at 0.45, committed before the
+  per-class data it covers was generated; the overall accuracies at 0.70 and the
+  per-class results at 0.25 and 0.45 were known by then

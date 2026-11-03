@@ -393,18 +393,23 @@ def test_mu_tuning_uses_the_rq3_mid_cell_at_trials_no_reported_grid_trains():
     ]
 
 
-def test_the_class_order_grid_is_rq2s_capped_fedavg_cell_at_045_with_classes_reversed():
+def test_the_class_order_grid_is_rq2s_capped_fedavg_cells_with_classes_reversed():
     configs = expand(f"{GRIDS}/rq2_class_order.yaml", for_training=True)
     capped = {
-        c.runtime.trial: c
+        (c.partition.alpha, c.runtime.trial): c
         for c in rq2()
         if c.partition.size_cap == "niid_bench"
-        and c.partition.target_label_hd == 0.45
+        and c.partition.target_label_hd in (0.25, 0.45, 0.70)
         and c.federated.algorithm == "fedavg"
     }
-    assert len(configs) == 3 and {c.runtime.trial for c in configs} == set(capped)
+    assert len(configs) == 9 and {(c.partition.alpha, c.runtime.trial) for c in configs} == set(
+        capped
+    )
+    # the three runs trained at 0.45 before the other levels were added keep their ids
+    at_045 = [config_hash(c) for c in configs if c.partition.alpha == 0.6050899750391434]
+    assert at_045 == ["e9cb46cd", "3305baed", "52f05aeb"]
     for config in configs:
-        reference = capped[config.runtime.trial]
+        reference = capped[(config.partition.alpha, config.runtime.trial)]
         assert config.partition.class_order == "reversed"
         assert config.partition.alpha == reference.partition.alpha  # the same float
         assert config.partition.target_label_hd is None
