@@ -549,3 +549,20 @@ def test_cli_on_cifar10_is_bit_exact_whatever_ran_before(tmp_path):
 
     resumed = run_cli("--grid", grid).splitlines()[-1]
     assert resumed == "2 runs: 0 trained, 2 already completed"
+
+
+# --- concurrent training ----------------------------------------------------------------
+
+
+def test_shards_split_a_grid_into_disjoint_parts_that_cover_it(tmp_path):
+    from experiments.run_training import shard
+
+    configs = [toy_config(tmp_path, {"runtime.trial": t}, generate=False) for t in range(7)]
+    parts = [shard(configs, f"{k}/3") for k in range(3)]
+    assert [len(p) for p in parts] == [3, 2, 2]
+    hashes = [config_hash(c) for p in parts for c in p]
+    assert sorted(hashes) == sorted(config_hash(c) for c in configs)
+    assert parts[1] == [configs[1], configs[4]]
+    for bad in ("3/3", "-1/3", "1", "a/b", "1/0"):
+        with pytest.raises(ValueError, match="--shard"):
+            shard(configs, bad)

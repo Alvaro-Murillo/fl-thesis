@@ -334,6 +334,22 @@ def train_all(
     return len(pending), len(configs) - len(pending)
 
 
+def shard(configs: Sequence[ExperimentConfig], spec: str) -> list[ExperimentConfig]:
+    """The configs shard `K/N` trains: every N-th config, starting at index K (0-based).
+
+    N processes started with shards 0/N .. N-1/N train disjoint sets that together are
+    the whole grid, in grid order within each, so no run is trained twice. Each resumes
+    on its own: started again with the same shard, it skips its completed runs.
+    """
+    try:
+        k, n = (int(part) for part in spec.split("/"))
+    except ValueError:
+        raise ValueError(f"--shard takes K/N, e.g. 0/3; got {spec!r}") from None
+    if not 0 <= k < n:
+        raise ValueError(f"--shard K/N needs 0 <= K < N; got {spec!r}")
+    return list(configs[k::n])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -344,9 +360,16 @@ def main() -> None:
     parser.add_argument(
         "--force", action="store_true", help="train again even if the run already completed"
     )
+    parser.add_argument(
+        "--shard",
+        metavar="K/N",
+        help="train only every N-th run of the grid, from index K: one of N processes",
+    )
     args = parser.parse_args()
 
     configs = [load_config(args.config)] if args.config else expand(args.grid, for_training=True)
+    if args.shard:
+        configs = shard(configs, args.shard)
     trained, skipped = train_all(configs, force=args.force)
     print(f"{len(configs)} runs: {trained} trained, {skipped} already completed")
 

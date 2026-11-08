@@ -282,3 +282,36 @@ def test_killed_run_leaves_running_row_and_partial_history(tmp_path):
         parsed = list(csv.DictReader(fh))
     assert [r["round"] for r in parsed] == ["1", "2"]
     assert not skip_if_exists(smoke_config(), tmp_path)
+
+
+_APPEND_WORKER = """
+import sys
+from experiments.recording import append_jsonl
+path, worker = sys.argv[1], int(sys.argv[2])
+for i in range(300):
+    append_jsonl(path, {"worker": worker, "i": i, "pad": "x" * 2000})
+"""
+
+
+def test_concurrent_appends_from_several_processes_never_interleave(tmp_path):
+    path = tmp_path / "runs.jsonl"
+    procs = [
+        subprocess.Popen([sys.executable, "-c", _APPEND_WORKER, str(path), str(w)])
+        for w in range(4)
+    ]
+    assert all(p.wait(timeout=120) == 0 for p in procs)
+    rows = read_jsonl(path)  # every line parses
+    assert sorted((r["worker"], r["i"]) for r in rows) == [
+        (w, i) for w in range(4) for i in range(300)
+    ]
+
+
+def test_the_lock_is_released_after_an_exception(tmp_path):
+    from experiments.recording import file_lock
+
+    path = tmp_path / "runs.jsonl"
+    with pytest.raises(RuntimeError):
+        with file_lock(path):
+            raise RuntimeError("boom")
+    with file_lock(path):  # would wait forever if still held
+        pass

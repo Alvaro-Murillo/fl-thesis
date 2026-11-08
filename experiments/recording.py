@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -64,18 +65,58 @@ def atomic_write_text(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+@contextmanager
+def file_lock(path: Path, poll_s: float = 0.01):
+    """Hold an exclusive inter-process lock on `{path}.lock` for the block.
+
+    Several training processes (`run_training --shard`) append to one runs.jsonl.
+    Appending on Windows is a seek to the end and a write, not one atomic step, so two
+    processes can interleave; every append and every read of a jsonl file takes this
+    lock. It is a byte-range lock on the lock file (msvcrt on Windows, flock
+    elsewhere), released by the operating system if the holder dies, so a killed run
+    never leaves it held.
+    """
+    lock = Path(f"{path}.lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a+b") as fh:
+        if os.name == "nt":
+            import msvcrt
+
+            fh.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(poll_s)
+            try:
+                yield
+            finally:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+
+
 def append_jsonl(path: Path, row: dict) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row) + "\n")
+    line = json.dumps(row) + "\n"
+    with file_lock(path), path.open("a", encoding="utf-8") as fh:
+        fh.write(line)
 
 
 def read_jsonl(path: Path) -> list[dict]:
     path = Path(path)
     if not path.exists():
         return []
-    with path.open(encoding="utf-8") as fh:
+    with file_lock(path), path.open(encoding="utf-8") as fh:
         return [json.loads(line) for line in fh if line.strip()]
 
 
