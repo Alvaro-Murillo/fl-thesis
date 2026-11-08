@@ -1,0 +1,54 @@
+# Covtype reference configuration: base.yaml's training settings on Covtype with
+# the source paper's tabular DNN (54 -> 500 -> 500 -> 500 -> 7). The Covtype grids
+# start from it. Every field is listed explicitly.
+#
+# The cell itself is the no-skew natural partition (alpha 1000.0, the source
+# paper's IID alpha), the cell the timing run uses.
+#
+# Covtype is fetched and prepared by experiments/covtype.py: stratified split with
+# 58,102 test samples (522,910 train, the paper's Table 2), continuous columns
+# standardised on the training set. Accuracy is the test-set accuracy, as for
+# CIFAR-10; per-class and balanced accuracy are recorded next to it.
+
+dataset:
+  name: covtype
+  num_classes: 7
+  root: data
+  val_split: 0.0
+
+partition:
+  mode: natural_per_class
+  K: 30
+  alpha: 1000.0
+  beta: null
+  target_label_hd: null
+  target_quantity_hd: null
+  min_size_policy: 10
+  calibration_id: null
+
+# K = 30 and the training settings are the source paper's (Jimenez-Gutierrez et al.,
+# Section 4, "Models"), the same as base.yaml's; the paper uses them for every
+# dataset. model.in_channels is the DNN's feature count.
+model:
+  arch: dnn
+  in_channels: 54
+  num_classes: 7
+
+federated:
+  algorithm: fedavg
+  rounds: 40
+  local_epochs: 10
+  batch_size: 64
+  lr: 0.001
+  mu: 0.0
+  optimizer: adam
+  client_fraction: 1.0
+
+runtime:
+  trial: 0
+  deterministic: true
+  device: cuda
+  out_dir: results
+  partition_seed: null
+  init_seed: null
+  train_seed: null

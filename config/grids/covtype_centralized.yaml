@@ -1,0 +1,15 @@
+# The Covtype centralized baseline (config/covtype_centralized.yaml) at trials 0-4,
+# the trials covtype_rq2.yaml trains. Trial t has the init seed of the federated runs
+# at trial t, so both start from the same weights. 10 epochs is the pre-specified
+# setting, as on CIFAR-10; covtype_centralized_steps.yaml is a post-hoc check of it.
+# Open for training since 2026-11-08; about 2 min per run alone.
+#
+#   python -m experiments.run_training --grid config/grids/covtype_centralized.yaml --shard 0/3
+#   (and --shard 1/3, --shard 2/3)
+#
+# 5 runs, no partitions.
+
+base: config/covtype_centralized.yaml
+
+sweep:
+  runtime.trial: [0, 1, 2, 3, 4]

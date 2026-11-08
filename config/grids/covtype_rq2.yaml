@@ -1,0 +1,65 @@
+# RQ2 on Covtype - pure vs natural label skew, matched on realized label-HD.
+# Open for training since 2026-11-08 (FedAvg cases), three shards at once:
+#
+#   python -m experiments.run_grid --grid config/grids/covtype_rq2.yaml   (once, first)
+#   python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 0/3
+#   python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 1/3
+#   python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 2/3
+#
+# rq2.yaml's three arms on Covtype (K = 30, the DNN), trials 0-4: natural_per_class
+# uncapped, natural_per_class with the NIID-Bench cap, and pure_label. Each arm
+# resolves its alpha on its own 20-trial Covtype curve. Target 0 is no skew
+# (alpha 1000.0).
+#
+# Levels 0, 0.15, 0.35 and 0.50 come from the rule that gave the CIFAR-10 levels,
+# applied to Covtype's 20-seed label-HD ceilings: the common ceiling is 0.593, set
+# by pure_label (uncapped 0.722, capped 0.732); minus 0.05 and floored to 0.05 gives
+# the top level 0.50; linspace(0, 0.50, 4) rounded to 0.05 gives the others.
+# pure_label's ceiling is low because with equal client sizes the two largest
+# classes (85% of the data) fill most clients, and a client holding class 1 alone is
+# only 0.55 from the global label distribution.
+#
+# Every cell's 20-seed mean is within 0.011 of its target. Single seeds of trials
+# 0-4 outside +/- 0.05: uncapped 0.35 trial 0, uncapped 0.50 trial 4, capped 0.50
+# trial 4. A cell is recalibrated only if its 20-seed mean misses by more than 0.05;
+# single-seed misses are listed and handled by the realized-HD analysis.
+#
+# Unlike CIFAR-10, the cap binds at level 0 too (alpha 1000: the last class split
+# reaches 29.2 of 30 clients on average), so the two natural arms' level-0 partitions
+# differ (label-HD 0.011 capped, 0.008 uncapped) and both are trained.
+#
+# FedProx: one case per arm next to each FedAvg case, at the mu
+# covtype_mu_tuning.yaml selects, added once it is tuned, so no config hash carries
+# a provisional mu. The 60 FedAvg hashes are pinned by a test and must not change.
+#
+#   python -m analysis.partition_validation --grid config/grids/covtype_rq2.yaml --prefix covtype_rq2
+#
+# 3 arms x 4 levels x 5 trials = 60 partitions and 60 FedAvg runs. The centralized
+# baseline is covtype_centralized.yaml (5 runs). Measured alone, a FedAvg run takes
+# 80.2 min; three at once give 2.24 times the throughput.
+
+base: config/covtype.yaml
+
+constant:
+  partition.K: 30
+  partition.alpha: null
+
+cases:
+  - partition.mode: natural_per_class
+    partition.size_cap: none
+    partition.min_size_policy: 10
+    partition.calibration_id: c517442ecf  # natural_per_class uncapped, Covtype, 20 trials
+    federated.algorithm: fedavg
+  - partition.mode: natural_per_class
+    partition.size_cap: niid_bench
+    partition.min_size_policy: 10
+    partition.calibration_id: ea8e56e2d6  # natural_per_class niid_bench, Covtype, 20 trials
+    federated.algorithm: fedavg
+  - partition.mode: pure_label
+    partition.min_size_policy: 0
+    partition.calibration_id: a9a59164f5  # pure_label, Covtype, 20 trials
+    federated.algorithm: fedavg
+
+sweep:
+  partition.target_label_hd: [0.0, 0.15, 0.35, 0.50]
+  runtime.trial: [0, 1, 2, 3, 4]

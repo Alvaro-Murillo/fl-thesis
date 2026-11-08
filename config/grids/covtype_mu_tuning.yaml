@@ -1,0 +1,53 @@
+# FedProx mu for Covtype, tuned once at one mid-skew cell. Blocked until the Covtype
+# FedAvg grid and the CIFAR-10 trial extension are trained; then trained in three
+# shards (--shard 0/3, 1/3, 2/3). The chosen mu is then fixed for every FedProx cell
+# of covtype_rq2.yaml; it is not re-tuned per cell. FedProx runs in the same block
+# as the rest, since three runs at once give 2.24 times the sequential throughput.
+#
+# Cell: pure_label at label-HD 0.35, the third of covtype_rq2.yaml's levels as 0.45
+# was on CIFAR-10 (alpha read off the Covtype pure_label curve a9a59164f5), at trials
+# 5 and 6. covtype_rq2.yaml trains trials 0-4, so no reported run, partition or seed
+# is used to choose mu. Realized label-HD: 0.364 (trial 5) and 0.339 (trial 6).
+# Accuracy is measured on the Covtype test set, as in every run.
+#
+# Candidates: the source paper's grid {0.001, 0.01, 0.1, 1, 10, 100}, with FedAvg
+# as the mu = 0 reference.
+#
+# Selection rule, fixed before any run (mu_tuning.yaml's, unchanged):
+#   - the mu with the highest mean final-round test accuracy over the two trials,
+#     FedAvg counting as mu = 0;
+#   - if several are within 0.01 of the top mean, the smallest of them;
+#   - best_acc, rta and balanced accuracy are not used.
+# If the rule picks mu = 0, no FedProx case can be added to covtype_rq2.yaml (fedprox
+# requires mu > 0, and mu = 0 is FedAvg bit for bit). The result then goes back to
+# the author, with the best mu > 0 under the same rule alongside.
+#
+#   python -m experiments.run_grid --grid config/grids/covtype_mu_tuning.yaml
+#   python -m experiments.run_training --grid config/grids/covtype_mu_tuning.yaml
+#
+# 7 settings x 2 trials = 14 runs (2 FedAvg, 12 FedProx) over 2 partitions.
+
+status: blocked
+blocked_on: the Covtype FedAvg grid and the CIFAR-10 trial extension are trained first
+
+base: config/covtype.yaml
+
+constant:
+  partition.mode: pure_label
+  partition.K: 30
+  partition.alpha: null
+  partition.min_size_policy: 0
+  partition.calibration_id: a9a59164f5  # pure_label alpha curve, Covtype, 20 trials
+  partition.target_label_hd: 0.35
+
+cases:
+  - {federated.algorithm: fedavg}
+  - {federated.algorithm: fedprox, federated.mu: 0.001}
+  - {federated.algorithm: fedprox, federated.mu: 0.01}
+  - {federated.algorithm: fedprox, federated.mu: 0.1}
+  - {federated.algorithm: fedprox, federated.mu: 1.0}
+  - {federated.algorithm: fedprox, federated.mu: 10.0}
+  - {federated.algorithm: fedprox, federated.mu: 100.0}
+
+sweep:
+  runtime.trial: [5, 6]

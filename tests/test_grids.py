@@ -426,3 +426,96 @@ def test_the_class_order_grid_is_rq2s_capped_fedavg_cells_with_classes_reversed(
         assert as_reference == reference
         assert seeds_for(config) == seeds_for(reference)
         assert pid(config) != pid(reference)
+
+
+# --- Covtype ------------------------------------------------------------------------------
+
+COVTYPE_CURVES = {
+    ("natural_per_class", "none"): "c517442ecf",
+    ("natural_per_class", "niid_bench"): "ea8e56e2d6",
+    ("pure_label", "none"): "a9a59164f5",
+}
+
+
+@pytest.mark.parametrize(
+    "name, runs, partitions, open_for_training",
+    [
+        ("covtype_rq2", 60, 60, True),
+        ("covtype_centralized", 5, 0, True),
+        ("covtype_mu_tuning", 14, 2, False),
+        ("covtype_centralized_steps", 5, 0, False),
+    ],
+)
+def test_the_covtype_grids_train_the_dnn_on_covtype(name, runs, partitions, open_for_training):
+    path = f"{GRIDS}/{name}.yaml"
+    if open_for_training:
+        assert len(expand(path, for_training=True)) == runs
+    else:
+        with pytest.raises(GridBlocked, match="blocked"):
+            expand(path, for_training=True)
+    configs = expand(path, for_training=False)
+    assert len(configs) == len({config_hash(c) for c in configs}) == runs
+    assert len({pid(c) for c in configs if c.partition is not None}) == partitions
+    for c in configs:
+        assert (c.dataset.name, c.dataset.num_classes) == ("covtype", 7)
+        assert (c.model.arch, c.model.in_channels, c.model.num_classes) == ("dnn", 54, 7)
+
+
+COVTYPE_LEVELS = {0.0, 0.15, 0.35, 0.50}  # the level rule on Covtype's 20-seed ceilings
+COVTYPE_FEDAVG_HASHES = "b3918f6082faab77"
+
+
+def test_covtype_rq2_is_every_arm_at_every_rule_level_on_its_covtype_curve():
+    configs = expand(f"{GRIDS}/covtype_rq2.yaml", for_training=False)
+    cells = {}
+    for c in configs:
+        p = c.partition
+        assert p.calibration_id == COVTYPE_CURVES[(p.mode.value, p.size_cap)]
+        assert c.federated.algorithm == "fedavg"
+        cells.setdefault((p.mode.value, p.size_cap), set()).add(p.target_label_hd)
+        assert (p.alpha == 1000.0) == (p.target_label_hd == 0.0)
+    assert cells == {arm: COVTYPE_LEVELS for arm in COVTYPE_CURVES}
+    assert {c.runtime.trial for c in configs} == {0, 1, 2, 3, 4}
+
+
+def test_the_covtype_fedavg_cells_keep_their_config_hashes():
+    """Pinned before any FedProx case is added: adding one must not move these."""
+    import hashlib
+
+    hashes = [
+        config_hash(c)
+        for c in expand(f"{GRIDS}/covtype_rq2.yaml", for_training=False)
+        if c.federated.algorithm == "fedavg"
+    ]
+    assert len(hashes) == 60
+    assert hashlib.sha256(",".join(hashes).encode()).hexdigest()[:16] == COVTYPE_FEDAVG_HASHES
+
+
+def test_covtype_mu_tuning_is_the_third_level_on_trials_covtype_rq2_does_not_train():
+    tuning = expand(f"{GRIDS}/covtype_mu_tuning.yaml", for_training=False)
+    reported = expand(f"{GRIDS}/covtype_rq2.yaml", for_training=False)
+    assert {c.runtime.trial for c in tuning} == {5, 6}
+    assert not {pid(c) for c in tuning} & {pid(c) for c in reported}
+    assert {(c.federated.algorithm, c.federated.mu) for c in tuning} == {
+        ("fedavg", 0.0),
+        *(("fedprox", mu) for mu in (0.001, 0.01, 0.1, 1.0, 10.0, 100.0)),
+    }
+    pure_035 = {
+        c.partition.alpha
+        for c in reported
+        if c.partition.mode.value == "pure_label" and c.partition.target_label_hd == 0.35
+    }
+    assert {c.partition.target_label_hd for c in tuning} == {0.35}
+    assert {c.partition.alpha for c in tuning} == pure_035  # the reported cell's own alpha
+
+
+def test_the_400_epoch_centralized_grid_is_the_baseline_trained_longer_and_labelled_post_hoc():
+    steps = expand(f"{GRIDS}/covtype_centralized_steps.yaml", for_training=False)
+    baseline = expand(f"{GRIDS}/covtype_centralized.yaml", for_training=False)
+    assert [c.federated.local_epochs for c in steps] == [400] * 5
+    assert [replace(c, federated=replace(c.federated, local_epochs=10)) for c in steps] == baseline
+    assert not {config_hash(c) for c in steps} & {config_hash(c) for c in baseline}
+    label = yaml.safe_load(open(f"{GRIDS}/covtype_centralized_steps.yaml", encoding="utf-8"))[
+        "label"
+    ]
+    assert "post-hoc" in label and "2026-11-08" in label
