@@ -282,6 +282,51 @@ def test_train_loss_is_weighted_by_client_size():
     assert train_loss(result) == (10 * 1.0 + 30 * 3.0) / 40
 
 
+# --- per-class accuracy ------------------------------------------------------------
+
+
+def confusions_by_round(config) -> dict[int, np.ndarray]:
+    matrices: dict[int, np.ndarray] = {}
+    for row in history(config, "confusion.csv"):
+        cm = matrices.setdefault(int(row["round"]), np.zeros((CLASSES, CLASSES), dtype=int))
+        cm[int(row["true_class"]), int(row["predicted_class"])] = int(row["count"])
+    return matrices
+
+
+@pytest.mark.parametrize("make_config", [toy_config, centralized_config])
+def test_every_round_records_the_confusion_and_per_class_accuracy(tmp_path, make_config):
+    config = make_config(tmp_path)
+    train(config)
+    accuracy = {int(row["round"]): float(row["global_test_acc"]) for row in history(config)}
+    confusions = confusions_by_round(config)
+    per_class = {int(row["round"]): row for row in history(config, "per_class.csv")}
+
+    assert sorted(confusions) == sorted(per_class) == sorted(accuracy)  # round 0 included
+    for rnd, cm in confusions.items():
+        assert cm.sum() == N_TEST
+        assert np.trace(cm) / cm.sum() == accuracy[rnd]  # the same predictions evaluate() scored
+        recalls = np.diag(cm) / cm.sum(axis=1)
+        assert [float(per_class[rnd][f"acc_class_{c}"]) for c in range(CLASSES)] == list(recalls)
+        assert float(per_class[rnd]["balanced_acc"]) == pytest.approx(recalls.mean(), abs=1e-15)
+
+    final = read_jsonl(runs_path(tmp_path))[-1]
+    trained = [float(per_class[rnd]["balanced_acc"]) for rnd in sorted(per_class) if rnd >= 1]
+    assert final["final_balanced_acc"] == trained[-1]
+    assert final["best_balanced_acc"] == max(trained)
+
+
+@pytest.mark.parametrize("make_config", [toy_config, centralized_config])
+def test_recording_the_confusion_leaves_training_as_it_was(tmp_path, monkeypatch, make_config):
+    """The extra test-set pass changes no state: the run is the same without it."""
+    with_pass = train(make_config(tmp_path / "with"))
+    monkeypatch.setattr(
+        run_training, "confusion_on_test_set", lambda model, tensors, config: np.eye(CLASSES)
+    )
+    without_pass = train(make_config(tmp_path / "without"))
+    to_numbers = epoch_numbers if make_config is centralized_config else numbers
+    assert to_numbers(with_pass) == to_numbers(without_pass)
+
+
 # --- the partition gate ------------------------------------------------------------
 
 

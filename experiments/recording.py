@@ -30,6 +30,7 @@ import numpy as np
 
 from experiments.config import config_hash, dump_config
 from experiments.seeding import seeds_for
+from federated.confusion import balanced_accuracy, per_class_accuracy
 
 TIMESTAMP_FMT = "%Y%m%dT%H%M%S"  # no colons; Windows rejects them in filenames
 
@@ -158,6 +159,13 @@ HISTORY_COLUMNS = (
     "round_wall_s",
 )
 CLIENT_COLUMNS = ("round", "client", "num_samples", "train_loss", "steps")
+CONFUSION_COLUMNS = ("round", "true_class", "predicted_class", "count")
+
+
+def per_class_columns(num_classes: int) -> tuple[str, ...]:
+    """per_class.csv: the round, balanced accuracy, then each class's accuracy."""
+    return ("round", "balanced_acc", *(f"acc_class_{c}" for c in range(num_classes)))
+
 
 RTA_FRACTION = 0.9
 # Accuracies are counts over a test set, so a tie with the threshold is exact in theory but
@@ -237,20 +245,38 @@ class RunRecorder:
     does not count towards final_acc, best_acc or rta. clients.csv has one row per
     client that trained in a round (`log_clients`).
 
+    With `per_class=True`, each round's confusion matrix on the test set
+    (`log_confusion`, round 0 included) goes to confusion.csv, one row per (true,
+    predicted) class pair, and per_class.csv gets a row with each class's accuracy and
+    the balanced accuracy (`federated.confusion`; balanced accuracy is the thesis's
+    addition, not the source paper's). Both runs.jsonl rows then also carry
+    final_balanced_acc and best_balanced_acc, which, like final_acc and best_acc, leave
+    round 0 out.
+
     Use as a context manager: an exception is recorded as `failed` (`oom` for a
     CUDA OOM) and re-raised, so a crashed run never looks completed.
     """
 
-    def __init__(self, config, partition_id: str, out_dir: str | Path | None = None):
+    def __init__(
+        self,
+        config,
+        partition_id: str,
+        out_dir: str | Path | None = None,
+        per_class: bool = False,
+    ):
         self.config = config
         self.partition_id = partition_id
         self.run_id = config_hash(config)
         self.out_dir = Path(out_dir or config.runtime.out_dir)
         self.dir = self.out_dir / "runs" / self.run_id
         self.accuracies: list[float] = []  # rounds 1, 2, ...; round 0 is not in it
+        self.per_class = per_class
+        self.balanced_accuracies: list[float] = []  # rounds 1, 2, ..., as accuracies
         self._files = []
         self._history = None
         self._clients = None
+        self._per_class = None
+        self._confusion = None
         self._started = 0.0
         self._started_at = ""
 
@@ -272,6 +298,10 @@ class RunRecorder:
         self._started, self._started_at = time.perf_counter(), utc_stamp()
         self._history = self._open_csv("history.csv", HISTORY_COLUMNS)
         self._clients = self._open_csv("clients.csv", CLIENT_COLUMNS)
+        if self.per_class:
+            columns = per_class_columns(self.config.dataset.num_classes)
+            self._per_class = self._open_csv("per_class.csv", columns)
+            self._confusion = self._open_csv("confusion.csv", CONFUSION_COLUMNS)
         self._append_row("running")
         return self
 
@@ -310,6 +340,36 @@ class RunRecorder:
         self._clients.writerows(dict(zip(CLIENT_COLUMNS, (round, *row))) for row in rows)
         self._flush()
 
+    def log_confusion(self, round: int, confusion) -> None:
+        """The global model's test-set confusion matrix after `round` (0: before training).
+
+        Rows are the true class, columns the predicted one. Writes the matrix to
+        confusion.csv and the per-class and balanced accuracy to per_class.csv.
+        """
+        if not self.per_class:
+            raise RuntimeError("this recorder was opened without per_class")
+        confusion = np.asarray(confusion)
+        num_classes = self.config.dataset.num_classes
+        if confusion.shape != (num_classes, num_classes):
+            raise ValueError(f"expected a {num_classes} x {num_classes} confusion matrix")
+        balanced = balanced_accuracy(confusion)
+        if round >= 1:
+            self.balanced_accuracies.append(balanced)
+        accuracy = per_class_accuracy(confusion)
+        self._per_class.writerow(
+            {
+                "round": round,
+                "balanced_acc": balanced,
+                **{f"acc_class_{c}": float(a) for c, a in enumerate(accuracy)},
+            }
+        )
+        self._confusion.writerows(
+            {"round": round, "true_class": t, "predicted_class": p, "count": int(confusion[t, p])}
+            for t in range(num_classes)
+            for p in range(num_classes)
+        )
+        self._flush()
+
     def finish(self, status: str = "completed") -> None:
         for handle in self._files:
             handle.close()
@@ -340,6 +400,7 @@ class RunRecorder:
                 "final_acc": self.accuracies[-1] if self.accuracies else None,
                 "best_acc": max(self.accuracies) if self.accuracies else None,
                 "rta": rounds_to_accuracy(self.accuracies),
+                **self._balanced_fields(),
                 "wall_clock_s": round(time.perf_counter() - self._started, 3) if done else None,
                 "status": status,
                 **git_provenance(),
@@ -348,6 +409,16 @@ class RunRecorder:
                 "finished_at": utc_stamp() if done else None,
             },
         )
+
+    def _balanced_fields(self) -> dict:
+        """final_balanced_acc and best_balanced_acc for a per-class run; nothing otherwise."""
+        if not self.per_class:
+            return {}
+        balanced = self.balanced_accuracies
+        return {
+            "final_balanced_acc": balanced[-1] if balanced else None,
+            "best_balanced_acc": max(balanced) if balanced else None,
+        }
 
     def __enter__(self) -> RunRecorder:
         return self.start()

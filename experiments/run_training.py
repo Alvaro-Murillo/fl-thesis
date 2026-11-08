@@ -42,9 +42,15 @@ the global model's test accuracy and loss, the trained clients' final-epoch
 training losses averaged by sample count (`train_loss`), and the round's wall
 time, and a clients.csv row per trained client (size, final-epoch loss, steps).
 history.csv starts with round 0, the initialised model's test accuracy and loss,
-which no metric counts. runs.jsonl gets a row at the start and one at the end,
-with final_acc, best_acc and rta: rounds to reach 90% of the run's own best
-accuracy (`experiments.recording.rounds_to_accuracy`). A run that already
+which no metric counts. Every round, round 0 included, the global model's confusion
+matrix on the test set (`federated.confusion`) goes to confusion.csv, and each
+class's accuracy and the balanced accuracy (the mean of the per-class accuracies;
+the thesis's addition, the source paper reports accuracy) to per_class.csv. It is
+an extra forward pass in eval mode that changes no state and draws no random
+number, so it leaves the training itself as it was. runs.jsonl gets a row at the
+start and one at the end, with final_acc, best_acc, final_balanced_acc,
+best_balanced_acc and rta: rounds to reach 90% of the run's own best accuracy
+(`experiments.recording.rounds_to_accuracy`). A run that already
 completed (same config_hash in runs.jsonl) is skipped unless --force is given; a
 failed or killed run is trained again. A sweep loads each dataset once, keeps it
 on the device for every run, and stops at the first run that fails.
@@ -92,6 +98,7 @@ from experiments.seeding import configure_torch, seeds_for
 from experiments.tensors import TensorData, load_tensors
 from federated.aggregation import fedavg
 from federated.centralized import EpochResult, train_centralized
+from federated.confusion import confusion_matrix
 from federated.data import FederatedData
 from federated.loop import MakeOptimizer, RoundResult, evaluate, run_federated
 from models.networks import build_model
@@ -125,6 +132,11 @@ def train_loss(result: RoundResult) -> float:
     """
     total = sum(result.client_sizes)
     return sum(n * loss for n, loss in zip(result.client_sizes, result.client_train_loss)) / total
+
+
+def confusion_on_test_set(model: torch.nn.Module, tensors: TensorData, config) -> np.ndarray:
+    """The model's confusion matrix on the test set (`federated.confusion`)."""
+    return confusion_matrix(model, tensors.test_x, tensors.test_y, config.dataset.num_classes)
 
 
 def partition_problem(config: ExperimentConfig) -> str | None:
@@ -182,8 +194,9 @@ def train(
     model = build_model(config.model, tensors.input_shape, seeds.init).to(device)
     federated = config.federated
 
-    with RunRecorder(config, pid) as recorder:
+    with RunRecorder(config, pid, per_class=True) as recorder:
         recorder.log_initial(*evaluate(model, tensors.test_x, tensors.test_y))
+        recorder.log_confusion(0, confusion_on_test_set(model, tensors, config))
         if centralized:
             return _train_centralized(model, tensors, federated, seeds.train, recorder, on_round)
         data = FederatedData(tensors.train_x, tensors.train_y, client_indices)
@@ -199,6 +212,7 @@ def train(
                 result.client_train_loss,
                 result.client_steps,
             )
+            recorder.log_confusion(result.round, confusion_on_test_set(model, tensors, config))
             if on_round is not None:
                 on_round(result)
 
@@ -235,6 +249,7 @@ def _train_centralized(
             result.epoch, result.test_acc, result.test_loss, result.train_loss, result.wall_s
         )
         recorder.log_clients(result.epoch, [0], [n_train], [result.train_loss], [result.steps])
+        recorder.log_confusion(result.epoch, confusion_on_test_set(model, tensors, recorder.config))
         if on_epoch is not None:
             on_epoch(result)
 

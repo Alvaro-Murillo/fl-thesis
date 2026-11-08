@@ -79,6 +79,56 @@ def test_recorder_schema(tmp_path):
     assert final["finished_at"] and final["started_at"]
 
 
+def test_per_class_recorder_adds_its_files_and_balanced_accuracy(tmp_path):
+    config = smoke_config()
+    num_classes = config.dataset.num_classes
+    untrained = np.full((num_classes, num_classes), 10)
+    perfect = np.diag(np.full(num_classes, 100))
+    skewed = perfect.copy()
+    skewed[0, 0], skewed[0, 1] = 50, 50  # class 0 at 0.5, the others at 1
+    with RunRecorder(config, "pid123", tmp_path, per_class=True) as rec:
+        rec.log_initial(0.1, 2.3)
+        rec.log_confusion(0, untrained)
+        for r, cm in enumerate((perfect, skewed), 1):
+            rec.log_round(r, np.trace(cm) / cm.sum(), 1.0, 1.0, 0.5)
+            rec.log_confusion(r, cm)
+
+    rows = read_jsonl(runs_path(tmp_path))
+    for row in rows:
+        assert set(row) == REQUIRED_RUN_FIELDS | {"final_balanced_acc", "best_balanced_acc"}
+    assert rows[0]["final_balanced_acc"] is None
+    final = rows[-1]
+    expected = (0.5 + (num_classes - 1)) / num_classes
+    assert final["final_balanced_acc"] == pytest.approx(expected)
+    assert final["best_balanced_acc"] == 1.0  # round 0 (0.1) counts for nothing either way
+
+    run_dir = tmp_path / "runs" / config_hash(config)
+    with (run_dir / "per_class.csv").open(newline="", encoding="utf-8") as fh:
+        per_class = list(csv.DictReader(fh))
+    assert [row["round"] for row in per_class] == ["0", "1", "2"]
+    assert float(per_class[0]["balanced_acc"]) == pytest.approx(0.1)
+    assert float(per_class[2]["acc_class_0"]) == 0.5
+    assert float(per_class[2][f"acc_class_{num_classes - 1}"]) == 1.0
+    with (run_dir / "confusion.csv").open(newline="", encoding="utf-8") as fh:
+        confusion = list(csv.DictReader(fh))
+    assert len(confusion) == 3 * num_classes**2
+    last = {(int(r["true_class"]), int(r["predicted_class"])): int(r["count"]) for r in confusion}
+    assert last[(0, 1)] == 50 and last[(0, 0)] == 50 and last[(1, 1)] == 100
+
+
+def test_a_recorder_without_per_class_refuses_a_confusion(tmp_path):
+    with RunRecorder(smoke_config(), "pid123", tmp_path) as rec:
+        with pytest.raises(RuntimeError, match="without per_class"):
+            rec.log_confusion(0, np.eye(10))
+    assert not (tmp_path / "runs" / config_hash(smoke_config()) / "per_class.csv").exists()
+
+
+def test_a_confusion_of_the_wrong_size_is_refused(tmp_path):
+    with RunRecorder(smoke_config(), "pid123", tmp_path, per_class=True) as rec:
+        with pytest.raises(ValueError, match="10 x 10"):
+            rec.log_confusion(0, np.eye(7))
+
+
 def test_no_tmp_files_left_behind(tmp_path):
     dummy_run(smoke_config(), tmp_path)
     assert list(tmp_path.rglob("*.tmp")) == []

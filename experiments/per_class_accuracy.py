@@ -15,6 +15,10 @@ pass is a forward pass in eval mode under no_grad, at `evaluate`'s batch size, s
 changes no state and draws no random number. The final model is `model` after
 `run_federated` returns.
 
+The confusion matrix and per-class accuracy are `federated.confusion`'s, which
+`experiments.run_training` now also records every round (per_class.csv, confusion.csv), so
+this module is for runs recorded before that.
+
 --grid selects the configs of a grid; --where narrows them by dotted-key equality, with
 the grid file's own keys and YAML values (`partition.target_label_hd=0.7`). Each must
 have a completed row in runs.jsonl. A centralized config has no clients and is refused.
@@ -81,11 +85,12 @@ from experiments.run_training import describe, optimizer_factory, proximal_mu, s
 from experiments.seeding import configure_torch, seeds_for
 from experiments.tensors import TensorData, load_tensors
 from federated.aggregation import fedavg
+from federated.confusion import EVAL_BATCH, confusion_matrix, per_class_accuracy
 from federated.data import FederatedData
 from federated.loop import RoundResult, evaluate, run_federated
 from models.networks import build_model
 
-EVAL_BATCH = 1000  # evaluate()'s default, which run_federated uses
+__all__ = ["EVAL_BATCH", "confusion_matrix", "per_class_accuracy"]  # re-exported for callers
 CHECKS = (
     "partition_id_equal",
     "final_acc_equal",
@@ -116,24 +121,6 @@ def load_per_class(out_dir: str | Path, run_id: str) -> dict:
         failed = [check for check in CHECKS if payload.get(check) is not True]
         raise NotBitExact(f"run {run_id}'s per-class result is not bit-exact: {failed}")
     return payload
-
-
-def per_class_accuracy(confusion: np.ndarray) -> np.ndarray:
-    """Recall of each class: correct predictions over the test images of that class."""
-    confusion = np.asarray(confusion)
-    return np.diag(confusion) / confusion.sum(axis=1)
-
-
-@torch.no_grad()
-def confusion_matrix(model, x: torch.Tensor, y: torch.Tensor, num_classes: int) -> np.ndarray:
-    """(num_classes, num_classes) counts; rows are the true class, columns the predicted one."""
-    model.eval()
-    preds = torch.cat(
-        [model(x[s : s + EVAL_BATCH]).argmax(dim=1) for s in range(0, len(y), EVAL_BATCH)]
-    )
-    # Counted on the CPU: no CUDA op beyond the forward pass evaluate() already runs.
-    pairs = y.cpu().numpy() * num_classes + preds.cpu().numpy()
-    return np.bincount(pairs, minlength=num_classes**2).reshape(num_classes, num_classes)
 
 
 def matches_accuracy(confusions, accs) -> bool:
