@@ -56,6 +56,8 @@ def test_dnn_layers():
     model = build_model(COVTYPE, (54,), init_seed=0)
     shapes = [tuple(m.weight.shape) for m in layers(model)]
     assert shapes == [(500, 54), (500, 500), (500, 500), (7, 500)]
+    assert all(m.bias is not None for m in layers(model))
+    assert sum(p.numel() for p in model.parameters()) == 532_007
     assert sum(isinstance(m, nn.ReLU) for m in model.modules()) == 3
     assert model(torch.rand(4, 54)).shape == (4, 7)
 

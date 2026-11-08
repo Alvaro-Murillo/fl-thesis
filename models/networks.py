@@ -16,6 +16,16 @@ choices, all Keras defaults: unpadded ("valid") 3x3 convolutions with stride 1,
 num_classes output layer as in the DNN. With 32x32x3 inputs the flatten has
 4 * 4 * 64 = 1024 features and the CNN 122,570 parameters.
 
+The DNN is the paper's model for its tabular datasets, Covtype among them. The
+paper (v1 and v2) describes an input layer with one unit per feature, three hidden
+layers of 500 ReLU units and a softmax output layer with one unit per class. The
+input layer is read as the input itself, as a Keras `Input`, not as a trained
+dense layer of width num_features. The paper gives no initialisation, bias,
+dropout or normalisation for it either; the choices are the CNN's, Keras
+defaults: Glorot-uniform weights, biases in every layer and zero at the start, no
+dropout, no normalisation. On Covtype (54 features, 7 classes) it is
+54 -> 500 -> 500 -> 500 -> 7 with 532,007 parameters.
+
 Both models return logits. The DNN's softmax output layer is the softmax inside
 `F.cross_entropy`, and argmax is the same before and after it. The flatten runs
 over (channel, row, column), where Keras flattens (row, column, channel); this

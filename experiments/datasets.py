@@ -20,7 +20,13 @@ def _cifar10(root: str) -> np.ndarray:
     return np.asarray(CIFAR10(root=root, train=True, download=True).targets)
 
 
-LOADERS = {"cifar10": _cifar10}
+def _covtype(root: str) -> np.ndarray:
+    from experiments.covtype import load_split
+
+    return load_split(root).train_y
+
+
+LOADERS = {"cifar10": _cifar10, "covtype": _covtype}
 
 
 def load_labels(dataset) -> np.ndarray:

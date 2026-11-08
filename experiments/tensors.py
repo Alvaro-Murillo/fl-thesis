@@ -8,6 +8,10 @@ Images become float32 in [0, 1] (pixels / 255), laid out (N, C, H, W). There
 is no standardisation and no augmentation. The conversion runs on the CPU and
 the result is then moved to the device, so the values do not depend on it.
 
+Covtype's features are already float32 (N, 54), split and standardised by
+`experiments.covtype`, which also gives `experiments.datasets` its labels; they
+are moved to the device as they are.
+
 This module imports torch: entry scripts call
 `experiments.seeding.enable_cublas_determinism()` before importing it.
 
@@ -55,7 +59,28 @@ def _cifar10(root: str, train: bool) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(ds.data), np.asarray(ds.targets)
 
 
-LOADERS = {"cifar10": _cifar10}
+def _covtype(root: str, train: bool) -> tuple[np.ndarray, np.ndarray]:
+    from experiments.covtype import load_split
+
+    split = load_split(root)
+    return (split.train_x, split.train_y) if train else (split.test_x, split.test_y)
+
+
+def features_to_float(features: np.ndarray) -> torch.Tensor:
+    """float32 (N, F) features -> a float32 tensor, values unchanged."""
+    if features.dtype != np.float32 or features.ndim != 2:
+        raise ValueError(f"expected float32 (N, F) features, got {features.dtype} {features.shape}")
+    return torch.from_numpy(np.ascontiguousarray(features))
+
+
+def to_float_tensor(inputs: np.ndarray) -> torch.Tensor:
+    """uint8 images through `images_to_unit_float`, float32 features as they are."""
+    if inputs.dtype == np.uint8:
+        return images_to_unit_float(inputs)
+    return features_to_float(inputs)
+
+
+LOADERS = {"cifar10": _cifar10, "covtype": _covtype}
 
 
 def load_tensors(dataset, device: str | torch.device = "cpu") -> TensorData:
@@ -74,6 +99,6 @@ def load_tensors(dataset, device: str | torch.device = "cpu") -> TensorData:
             raise ValueError(f"{dataset.name}: labels outside 0..{dataset.num_classes - 1}")
         if len(images) != len(labels):
             raise ValueError(f"{dataset.name}: {len(images)} images, {len(labels)} labels")
-        tensors.append(images_to_unit_float(images).to(device))
+        tensors.append(to_float_tensor(images).to(device))
         tensors.append(torch.as_tensor(labels, dtype=torch.long).to(device))
     return TensorData(*tensors)
