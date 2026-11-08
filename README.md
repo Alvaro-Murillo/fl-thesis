@@ -23,6 +23,22 @@ details.
 All commands assume the project root as the working directory, and the venv
 interpreter (`.venv\Scripts\python.exe` on the desktop machine).
 
+## Datasets
+
+- CIFAR-10, through torchvision, downloaded to `data/` on first use.
+- Covtype: Blackard, J. (1998). Covertype [Dataset]. UCI Machine Learning
+  Repository. https://doi.org/10.24432/C50K5N. Licensed under Creative Commons
+  Attribution 4.0 International (CC BY 4.0). 581,012 samples, 54 features, 7
+  classes from 0.47% to 48.8% of the data. Fetched with scikit-learn's
+  `fetch_covtype` (scikit-learn 1.9.0) and cached under `data/covtype/`
+  (`python -m experiments.covtype`). The arrays are checked against their sha256 on
+  every load: data `d9a3cc75...`, target `e2a1e021...` (full values in
+  `experiments/covtype.py`). The split and preprocessing are this project's choices,
+  since the source paper gives only the sizes: a stratified split with a fixed seed
+  and exactly 58,102 test samples, so 522,910 train as in the paper's Table 2;
+  labels 1-7 become 0-6; the 10 continuous columns are standardised with the
+  training set's mean and sd, and the 44 binary columns are left as they are.
+
 ## Structure
 
 - partitioning/ - HD measurement, Dirichlet partitioning, two-stage nested allocator
@@ -48,13 +64,16 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
     each client's gradients before the optimizer step (adapted code)
   - centralized.py - the whole training set as one client with one optimizer: the
     centralized baseline and the models' sanity check
+  - confusion.py - the global model's test-set confusion matrix, per-class accuracy
+    and balanced accuracy (the thesis's addition; the source paper reports accuracy)
 - experiments/ - config schema, seeding, recording, runner scripts
   - config.py - frozen dataclasses, YAML load/dump, `config_hash`
   - seeding.py - seed derivation per trial, torch determinism
   - recording.py - partition store, run records, atomic writes, provenance
-  - datasets.py - dataset label registry (currently `cifar10`)
-  - tensors.py - training and test tensors, images as float32 in [0, 1], in the same
-    sample order as the label registry
+  - datasets.py - dataset label registry (`cifar10`, `covtype`)
+  - tensors.py - training and test tensors, images as float32 in [0, 1] and Covtype's
+    standardised features as they are, in the same sample order as the label registry
+  - covtype.py - Covtype's fetch, checksums, stratified split and standardisation
   - run_partition.py - generate and record one partition
   - grid.py - grid-file expansion; run_grid.py - the partition-stage sweep
   - run_training.py - train one config or a whole grid on stored partitions, with
@@ -66,9 +85,10 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
   smoke_combined.yaml, the pipeline-check configs sanity_iid.yaml,
   sanity_label_skew.yaml and sanity_quantity_skew.yaml, the centralized baseline
-  centralized.yaml, and grids/ (rq1.yaml, rq2.yaml, rq3.yaml, the partition-only
-  rq3_edge.yaml, quantity_skew.yaml, mu_tuning.yaml, rq2_class_order.yaml and
-  centralized.yaml)
+  centralized.yaml, Covtype's covtype.yaml and covtype_centralized.yaml, and grids/
+  (rq1.yaml, rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, quantity_skew.yaml,
+  mu_tuning.yaml, rq2_class_order.yaml, centralized.yaml, and the blocked
+  covtype_rq2.yaml, covtype_mu_tuning.yaml and covtype_centralized.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -87,11 +107,20 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
 
 ## Usage
 
-Run the test suite. Slow tests (real CIFAR-10, FedArtML) are skipped unless
-`--runslow` is passed:
+Run the test suite. Slow tests (real CIFAR-10 and Covtype, FedArtML) are skipped
+unless `--runslow` is passed:
 
     python -m pytest tests/ -q
     python -m pytest tests/ -q --runslow
+
+Fetch Covtype once (it prints the checksums and per-class counts). If
+scikit-learn's mirror refuses the download, take covtype.data.gz from the UCI zip
+(https://archive.ics.uci.edu/static/public/31/covertype.zip) and pass it; it must
+match the sha256 scikit-learn pins for the file, and it is parsed and cached exactly
+as a mirror download would be:
+
+    python -m experiments.covtype
+    python -m experiments.covtype --archive path\to\covtype.data.gz
 
 Generate a partition (cached by `partition_id`; re-running is a no-op):
 
@@ -110,6 +139,17 @@ skipped unless `--force` is passed, and a failed or killed run is trained again:
     python -m experiments.run_partition --config config/smoke.yaml
     python -m experiments.run_training --config config/smoke.yaml
     python -m experiments.run_training --grid config/grids/rq3.yaml
+
+Train one grid in several processes at once, one terminal per shard. Generate every
+partition of the grid first, in one process, so no two shards ever make one (training
+refuses a grid with a missing partition). Shard K of N trains every N-th run from index
+K; runs.jsonl appends are serialised by a file lock, and each shard resumes when its own
+command is run again:
+
+    python -m experiments.run_grid --grid config/grids/covtype_rq2.yaml
+    python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 0/3
+    python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 1/3
+    python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 2/3
 
 Train the centralized baseline, trials 0-2 (no partition; about 20 s per run):
 
@@ -266,6 +306,8 @@ null for the modes that draw no per-client mix.
     partition_only  `true`: the partitions are made and checked, never trained
     status          `blocked` (with `blocked_on`): the partitions can be made and
                     checked, but training waits for what `blocked_on` names
+    label           optional text written into every runs.jsonl row of the grid's
+                    runs; not part of any config, so it moves no config_hash
 
 Every caller of `experiments.grid.expand` says what it expands for:
 `for_training=True` (the training runner only) refuses a `partition_only` or
@@ -354,6 +396,33 @@ pooled data), base.yaml's model, learning rate and batch size. The epoch count i
 fixed in the config, not picked by test accuracy. Trial t has the federated runs'
 init seed at trial t. history.csv holds one row per epoch, and rta counts epochs.
 
+Covtype (K = 30, the DNN) has its own 20-trial curves: c517442ecf (natural_per_class
+uncapped), ea8e56e2d6 (niid_bench), e73c794198 (natural_per_client) and a9a59164f5
+(pure_label). Its 20-seed label-HD ceilings are 0.722, 0.732, 0.785 and 0.593:
+with equal client sizes the two largest classes (85% of the data) fill most
+clients, so pure_label tops out far lower than on CIFAR-10. The same level rule on
+the RQ2 arms' common ceiling, 0.593, gives the Covtype levels 0, 0.15, 0.35 and
+0.50. The cap binds even at alpha 1000 on Covtype, so the two natural arms differ
+at level 0. The Covtype grids, trained three shards at once:
+
+- `covtype_rq2.yaml` (open) - rq2.yaml's three arms at the four Covtype levels,
+  trials 0-4: 12 cells, 60 partitions and 60 FedAvg runs, whose hashes a test pins.
+  FedProx cases are added once mu is tuned.
+- `covtype_centralized.yaml` (open) - config/covtype_centralized.yaml at trials
+  0-4, 10 epochs: the pre-specified baseline.
+- `covtype_mu_tuning.yaml` (blocked until the Covtype FedAvg grid and the CIFAR-10
+  trial extension are trained) - pure_label at label-HD 0.35, trials 5-6, FedAvg
+  and FedProx at the six mu values, with mu_tuning.yaml's rule: 14 runs.
+- `covtype_centralized_steps.yaml` (blocked, trained last) - the centralized
+  baseline for 400 epochs, the optimizer steps of one 40 x 10 federated run, trials
+  0-4. A post-hoc sensitivity check added after seeing the 10-epoch result; its
+  `label` is written into every one of its runs.jsonl rows.
+
+A cell is recalibrated only if its 20-seed mean misses its target by more than
+0.05. A single seed outside ±0.05 is listed and handled by the realized-HD
+analysis; it is not swapped, redrawn or dropped. This applies to Covtype and to the
+CIFAR-10 trials 5-6.
+
 `analysis.partition_validation` applies the rules above: a cell is feasible if
 every one of its partitions is within 0.05 of its label target and its
 quantity level, if it has one, passes the 20-seed check. It reports and
@@ -374,13 +443,21 @@ Everything lands under `results/` (gitignored), written atomically:
   (`completed` / `failed` / `oom`); readers take the last row per `run_id`.
   `final_acc` is the test accuracy after the last round, `best_acc` the highest
   after any round, and `rta` the first round reaching 90% of `best_acc` (the source
-  paper's rounds-to-accuracy, taken against the run's own maximum)
+  paper's rounds-to-accuracy, taken against the run's own maximum).
+  `final_balanced_acc` and `best_balanced_acc` are the same for balanced accuracy;
+  runs recorded before per-class logging have neither. `label` is the grid's label,
+  present only for runs of a grid that has one (e.g. a post-hoc check)
 - `runs/{run_id}/history.csv` - per round: the global model's test accuracy and
   loss, `train_loss` (the trained clients' final-epoch losses weighted by sample
   count) and wall time, flushed each round. Round 0 is the initialised model
   before training; it has no train loss or wall time and no metric counts it
 - `runs/{run_id}/clients.csv` - one row per client per round: its sample count,
   final-epoch training loss and optimizer steps
+- `runs/{run_id}/per_class.csv` - per round, round 0 included: each class's test
+  accuracy (`acc_class_{c}`, its recall) and `balanced_acc`, their unweighted mean
+  (the thesis's addition; accuracy is the source paper's metric)
+- `runs/{run_id}/confusion.csv` - per round, round 0 included: the global model's
+  test-set confusion matrix, one row per (true class, predicted class) with its count
 - `runs/{run_id}/config.yaml` - the resolved config, so a row stays readable
   after the schema moves on
 - `analysis/` - analysis-script outputs, e.g. `fedartml_comparison_label_skew.csv`,
@@ -682,3 +759,47 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   `analysis.rq2_class_order`. The rule is the one used at 0.45, committed before the
   per-class data it covers was generated; the overall accuracies at 0.70 and the
   per-class results at 0.25 and 0.45 were known by then
+- Covtype added, with the source paper's DNN (not trained yet): the data through
+  scikit-learn's `fetch_covtype` with checksums, our stratified split (58,102 test,
+  522,910 train) and training-set standardisation, the 20-trial curves of the four
+  label-skew arms at K = 30, and the blocked grids `covtype_rq2.yaml`,
+  `covtype_mu_tuning.yaml` and `covtype_centralized.yaml`. Every run now records its
+  test-set confusion matrix, per-class accuracy and balanced accuracy each round
+  (CIFAR-10 included); a test shows runs with and without it are identical
+- Decided 2026-11-08, before any Covtype training and before any CIFAR-10 trial 5-6
+  result:
+  - Covtype label levels 0, 0.15, 0.35, 0.50 for all three RQ2 arms, from the rule
+    that gave the CIFAR-10 levels (common 20-seed ceiling 0.593, set by pure_label,
+    minus 0.05, floored to 0.05; linspace rounded to 0.05). pure_label cannot reach
+    0.70 on Covtype
+  - Tolerance, a clarification of the 2026-10-11 recalibration rule: a cell is
+    recalibrated only if its 20-seed mean misses its target by more than 0.05;
+    single-seed misses are listed and handled by the realized-HD analysis, with no
+    recalibration, seed swap or dropped trial. The same applies to the CIFAR-10
+    trial 5-6 tolerance gate. Covtype trials 0-4 outside ±0.05: uncapped 0.35 trial
+    0 (0.299), uncapped 0.50 trial 4 (0.438), capped 0.50 trial 4 (0.432)
+  - Covtype FedProx mu is tuned on pure_label at label-HD 0.35 (the third level, as
+    0.45 was on CIFAR-10), trials 5-6, with the rule written in the file before any
+    run; balanced accuracy is not used
+  - Per-class logging for every run, CIFAR-10 included, as long as it stays
+    result-neutral
+- Approved 2026-11-08, after the timing checks (all on Covtype, alpha 1000, trial 0,
+  the GPU otherwise idle): one FedAvg 40 x 10 run takes 80.2 min alone (1.47 ms per
+  step) and a centralized 10-epoch run 2.0 min. Decided before any Covtype training:
+  - Training runs three at once with foreach Adam: 2.24 times the sequential
+    throughput, and every run trained three (or two) at once was bit-identical to the
+    same run trained alone. Training a grid in several processes needs the runs.jsonl
+    lock and `--shard`: without the lock, 4 processes appending at once kept 878 of
+    1,200 lines intact
+  - Fused Adam was tested and declined. It runs at 1.31 against 1.54 ms per step
+    (1.17x alone, 2.70x three at once) and its reruns are bit-identical, but it is a
+    different floating-point path from CIFAR-10's Adam (round-1 accuracy -0.0012,
+    weights up to 0.076 apart). The optimizer stays foreach Adam, as on CIFAR-10, with
+    no new config field, and the pinned Covtype FedAvg hashes stay as they are
+  - FedProx on Covtype runs in the same block, since 2.24x passes the ~1.7x rule
+  - The centralized baseline stays at 10 epochs, the pre-specified setting, as on
+    CIFAR-10. `covtype_centralized_steps.yaml` (400 epochs, the optimizer steps of one
+    40 x 10 federated run) is a post-hoc sensitivity check, added after seeing the
+    10-epoch result (0.9429 at trial 0, against the source paper's 95.60%)
+  - Before any sharded training, every partition of the grid is generated in one
+    process
