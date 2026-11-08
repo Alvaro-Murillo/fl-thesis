@@ -327,6 +327,26 @@ def test_a_cell_needs_every_trial_and_its_level(realized, level_ok, expected):
     assert bool(cell["cell_feasible"]) is expected
 
 
+@pytest.mark.parametrize(
+    "realized, status, expected",
+    [
+        ((0.30, 0.34, 0.26), "generated", "within tolerance"),
+        ((0.30, 0.34, 0.36), "generated", "single-seed miss"),  # mean 0.333, one seed out
+        ((0.38, 0.39, 0.36), "generated", "mean outside tolerance"),  # mean 0.377
+        ((0.30, 0.30, None), "infeasible_min_size", "has no partition"),
+    ],
+)
+def test_the_label_verdict_says_what_a_failed_check_means(realized, status, expected):
+    """Under the 2026-11-08 rule a single-seed miss is descriptive, not an excluded cell."""
+    records = [
+        record(t, r, status=status if r is None else "generated") for t, r in enumerate(realized)
+    ]
+    verdict_text = verdict(records, level(True))["label_verdict"]
+    assert expected in verdict_text
+    if expected == "single-seed miss":
+        assert "not excluded" in verdict_text and "2026-11-08" in verdict_text
+
+
 def test_a_trial_without_a_partition_fails_the_label_check():
     records = [record(0, 0.3), record(1, 0.3), record(2, None, status="infeasible_min_size")]
     cell = verdict(records, level(True))

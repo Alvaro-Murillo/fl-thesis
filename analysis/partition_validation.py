@@ -43,6 +43,12 @@ feasible if every partition it holds passes the label check and its quantity
 level, if it sets one, passes. A trial whose min-size redraw budget ran out
 has no partition and fails the label check.
 
+Under the rule of 2026-11-08 a failed label check is descriptive: a cell is
+recalibrated only if its 20-seed mean misses its target by more than 0.05, and a
+single trained partition outside the tolerance is kept, trained and handled by the
+realized-HD analysis. cells.csv's `label_verdict` says which case a cell is in, so
+a flagged cell is never read as an excluded one.
+
 Reports only: nothing is excluded, redrawn or relabelled here. Which levels a
 grid uses is chosen from these tables.
 
@@ -331,8 +337,32 @@ def cells_table(partitions: pd.DataFrame, levels: dict) -> pd.DataFrame:
         row["cell_feasible"] = row["label_feasible"] is not False and (
             row["level_feasible"] is not False
         )
+        row["label_verdict"] = label_verdict(row)
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+SINGLE_SEED_MISS = "single-seed miss: descriptive, trained and not excluded (2026-11-08 rule)"
+
+
+def label_verdict(row: dict) -> str | None:
+    """What a cell's label check means under the 2026-11-08 rule; None without a label target.
+
+    The rule: a cell is recalibrated only if its 20-seed mean misses its target by more
+    than the tolerance. A trained partition outside it is listed and handled by the
+    realized-HD analysis, never swapped, redrawn or dropped. So a failed label check with
+    the trained trials' mean inside the tolerance is a descriptive flag, not an excluded
+    cell. A mean outside it, or a trial with no partition, needs the 20-seed check.
+    """
+    if row["label_feasible"] is None:
+        return None
+    if row["label_feasible"]:
+        return "within tolerance"
+    if row["n_infeasible_min_size"]:
+        return "a trial has no partition (min-size redraws ran out)"
+    if abs(row["mean_label_hd_deviation"]) <= FEASIBILITY_TOLERANCE:
+        return SINGLE_SEED_MISS
+    return "trained trials' mean outside tolerance: check the 20-seed mean (2026-11-08 rule)"
 
 
 # --- figures ----------------------------------------------------------------
@@ -658,7 +688,9 @@ def feasibility_figure(cells: pd.DataFrame, path: Path) -> None:
         _wrap(
             f"× = fails: a trained partition outside ±{FEASIBILITY_TOLERANCE} of its label "
             f"target, or a quantity level whose 20-seed mean is outside "
-            f"±{FEASIBILITY_TOLERANCE}. Black lines on the scale mark the tolerance.",
+            f"±{FEASIBILITY_TOLERANCE}. Black lines on the scale mark the tolerance. A × on "
+            f"a label cell is descriptive: under the 2026-11-08 rule a single-seed miss is "
+            f"trained and excluded from nothing (cells.csv, label_verdict).",
             width,
             7,
         ),
@@ -681,9 +713,11 @@ def _wrap(text: str, figure_width: float, fontsize: float) -> str:
 def print_summary(partitions: pd.DataFrame, cells: pd.DataFrame) -> None:
     fmt = lambda v: f"{v:.3f}"
     with pd.option_context("display.width", 250, "display.max_columns", 40):
+        single = int((cells["label_verdict"] == SINGLE_SEED_MISS).sum())
         print(
             f"{len(cells)} target cells, {len(partitions)} partitions; "
-            f"{int((~cells['cell_feasible']).sum())} cells fail"
+            f"{int((~cells['cell_feasible']).sum())} cells fail a check, {single} of them "
+            f"single-seed misses (descriptive under the 2026-11-08 rule: trained, not excluded)"
         )
         one_axis = cells[cells["target_label_hd"].notna() & cells["target_quantity_hd"].isna()]
         if len(one_axis):
@@ -723,10 +757,11 @@ def print_summary(partitions: pd.DataFrame, cells: pd.DataFrame) -> None:
             )
         failing = cells[~cells["cell_feasible"]]
         if len(failing):
-            print("\n== Cells that fail ==")
+            print("\n== Cells that fail a check (label_verdict says what it means) ==")
             columns = [
                 "arm",
                 *TARGETS,
+                "label_verdict",
                 "n_label_within_tolerance",
                 "n_partitions",
                 "mean_label_hd_deviation",
