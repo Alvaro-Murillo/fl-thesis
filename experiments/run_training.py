@@ -3,6 +3,15 @@
     python -m experiments.run_training --config config/smoke.yaml
     python -m experiments.run_training --grid config/grids/rq3.yaml
     python -m experiments.run_training --grid config/grids/centralized.yaml
+    python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 0/3
+
+Several processes can train one grid at once: start N of them with --shard 0/N to
+--shard N-1/N. Shard K trains every N-th run from index K, so the shards never
+share a run, and runs.jsonl appends are serialised by a file lock
+(`experiments.recording.file_lock`). Each shard resumes when its own command is run
+again. Generate every partition of the grid first, in one process: training reads
+partitions and never makes one. A grid's `label`, if it has one, is written into
+every run's runs.jsonl rows.
 
 Training reads partitions and never makes them. A cell's partition must already
 be in the store (`experiments.run_partition`, `experiments.run_grid`), so every
@@ -85,7 +94,7 @@ import numpy as np
 import torch
 
 from experiments.config import ExperimentConfig, config_hash, load_config
-from experiments.grid import expand
+from experiments.grid import expand, load_grid
 from experiments.recording import (
     RunRecorder,
     load_partition,
@@ -172,13 +181,15 @@ def train(
     config: ExperimentConfig,
     tensors: TensorData | None = None,
     on_round: Callable[[RoundResult], None] | Callable[[EpochResult], None] | None = None,
+    label: str | None = None,
 ) -> list[RoundResult] | list[EpochResult]:
     """Train one config and record it, whether or not it ran before.
 
     `tensors` is the config's dataset on runtime.device, loaded here if None.
     Nothing is recorded if the partition is unavailable; once training starts, an
     exception is recorded as a failed run and re-raised. A centralized config
-    returns, and passes to `on_round`, one EpochResult per epoch.
+    returns, and passes to `on_round`, one EpochResult per epoch. `label` goes into
+    the run's runs.jsonl rows (`RunRecorder`).
     """
     if config.dataset.val_split != 0.0:
         raise NotImplementedError("no validation split is implemented; set dataset.val_split: 0")
@@ -194,7 +205,7 @@ def train(
     model = build_model(config.model, tensors.input_shape, seeds.init).to(device)
     federated = config.federated
 
-    with RunRecorder(config, pid, per_class=True) as recorder:
+    with RunRecorder(config, pid, per_class=True, label=label) as recorder:
         recorder.log_initial(*evaluate(model, tensors.test_x, tensors.test_y))
         recorder.log_confusion(0, confusion_on_test_set(model, tensors, config))
         if centralized:
@@ -303,11 +314,13 @@ def train_all(
     configs: Sequence[ExperimentConfig],
     force: bool = False,
     log: Callable[[str], None] = print,
+    label: str | None = None,
 ) -> tuple[int, int]:
     """Train every config in order. Returns (trained, skipped as already completed).
 
     Every partition the sweep needs is checked before the first run. Datasets are
-    loaded once per (dataset, device) and reused across runs.
+    loaded once per (dataset, device) and reused across runs. `label` is recorded with
+    every run (`train`).
     """
     done = [not force and skip_if_exists(config) for config in configs]
     pending = [config for config, skip in zip(configs, done) if not skip]
@@ -330,7 +343,7 @@ def train_all(
         centralized, f = config.partition is None, config.federated
         describe_step = describe_epoch if centralized else describe_round
         steps = f.local_epochs if centralized else f.rounds
-        train(config, tensors[key], lambda result: log(describe_step(result, steps)))
+        train(config, tensors[key], lambda result: log(describe_step(result, steps)), label)
     return len(pending), len(configs) - len(pending)
 
 
@@ -368,9 +381,10 @@ def main() -> None:
     args = parser.parse_args()
 
     configs = [load_config(args.config)] if args.config else expand(args.grid, for_training=True)
+    label = load_grid(args.grid).get("label") if args.grid else None
     if args.shard:
         configs = shard(configs, args.shard)
-    trained, skipped = train_all(configs, force=args.force)
+    trained, skipped = train_all(configs, force=args.force, label=label)
     print(f"{len(configs)} runs: {trained} trained, {skipped} already completed")
 
 

@@ -416,6 +416,25 @@ def test_command_line_trains_a_grid(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out.splitlines()[-1] == "1 runs: 0 trained, 1 already completed"
 
 
+def test_a_grids_label_is_recorded_with_its_runs_and_moves_no_hash(tmp_path, monkeypatch):
+    base = tmp_path / "base.yaml"
+    config = toy_config(tmp_path)
+    dump_config(config, base)
+    grid = tmp_path / "grid.yaml"
+    text = "post-hoc sensitivity check"
+    grid.write_text(
+        yaml.safe_dump({"base": str(base), "label": text, "sweep": {"runtime.trial": [0]}})
+    )
+    monkeypatch.setattr(sys, "argv", ["run_training", "--grid", str(grid), "--shard", "0/1"])
+    run_training.main()
+    rows = read_jsonl(runs_path(tmp_path))
+    assert [row["label"] for row in rows] == [text, text]
+    assert rows[-1]["config_hash"] == config_hash(config)
+
+    train(toy_config(tmp_path / "plain"))  # no grid, no label field
+    assert all("label" not in row for row in read_jsonl(runs_path(tmp_path / "plain")))
+
+
 # --- the centralized baseline -------------------------------------------------------------
 
 

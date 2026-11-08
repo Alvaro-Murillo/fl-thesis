@@ -294,6 +294,10 @@ class RunRecorder:
     final_balanced_acc and best_balanced_acc, which, like final_acc and best_acc, leave
     round 0 out.
 
+    A `label` (a grid's own, e.g. that it is a post-hoc check) goes into both runs.jsonl
+    rows as `label`; rows of runs without one have no such field. It is not part of the
+    config, so it never moves a config_hash.
+
     Use as a context manager: an exception is recorded as `failed` (`oom` for a
     CUDA OOM) and re-raised, so a crashed run never looks completed.
     """
@@ -304,6 +308,7 @@ class RunRecorder:
         partition_id: str,
         out_dir: str | Path | None = None,
         per_class: bool = False,
+        label: str | None = None,
     ):
         self.config = config
         self.partition_id = partition_id
@@ -311,6 +316,7 @@ class RunRecorder:
         self.out_dir = Path(out_dir or config.runtime.out_dir)
         self.dir = self.out_dir / "runs" / self.run_id
         self.accuracies: list[float] = []  # rounds 1, 2, ...; round 0 is not in it
+        self.label = label
         self.per_class = per_class
         self.balanced_accuracies: list[float] = []  # rounds 1, 2, ..., as accuracies
         self._files = []
@@ -442,6 +448,7 @@ class RunRecorder:
                 "best_acc": max(self.accuracies) if self.accuracies else None,
                 "rta": rounds_to_accuracy(self.accuracies),
                 **self._balanced_fields(),
+                **({} if self.label is None else {"label": self.label}),
                 "wall_clock_s": round(time.perf_counter() - self._started, 3) if done else None,
                 "status": status,
                 **git_provenance(),

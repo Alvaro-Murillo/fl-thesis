@@ -13,6 +13,9 @@ Grid contract:
                     (rq1.yaml, quantity_skew.yaml, the edge-level grid)
     status          `blocked`, with `blocked_on`: the grid's partitions can be made and
                     checked, but it cannot be trained until what it names is settled
+    label           optional text the training runner writes into every run's
+                    runs.jsonl rows, e.g. that the grid is a post-hoc check; it is not
+                    part of any config, so it moves no config_hash
 
 Every caller says what it expands for. `expand(path, for_training=True)` (the
 training runner) refuses a partition_only or blocked grid; the partition tools
