@@ -151,7 +151,8 @@ command is run again:
     python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 1/3
     python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 2/3
 
-Train the centralized baseline, trials 0-2 (no partition; about 20 s per run):
+Train the centralized baseline, trials 0, 1, 2, 5 and 6 (no partition; about 20 s per
+run):
 
     python -m experiments.run_training --grid config/grids/centralized.yaml
 
@@ -356,12 +357,13 @@ The RQ2 and RQ3 levels come from a level rule applied to 20-seed ceilings
 Alpha and beta are read off 20-trial curves: 147e58d391 (natural_per_class
 uncapped), 146de82d74 (niid_bench), 90f8f1dd9b (pure_label, and combined's
 alpha) and 8f995f9546 (quantity_only, combined's beta). All three grids are
-CIFAR-10, K = 30, trials 0-2, the trained trials:
+CIFAR-10, K = 30. rq2.yaml and rq3.yaml run trials 0, 1, 2, 5 and 6, the trained
+trials (5 and 6 added on 2026-11-11; 3 and 4 tuned mu), rq3_edge.yaml trials 0-2:
 
 - `rq2.yaml` - natural_per_class uncapped, natural_per_class niid_bench and
-  pure_label at the four label levels, each arm on its own curve (36
+  pure_label at the four label levels, each arm on its own curve (60
   partitions). Its natural target-0 cells are RQ1's alpha = 1000 partitions.
-- `rq3.yaml` - all `combined`, 4 label x 3 quantity levels (36 partitions). The
+- `rq3.yaml` - all `combined`, 4 label x 3 quantity levels (60 partitions). The
   first level on each axis is 0, so its edges are the single-skew arms and its
   corner is the no-skew baseline. combined uses one alpha per label level, the
   pure arm's, so cells at one label level share their drawn mixes. Its
@@ -371,7 +373,7 @@ CIFAR-10, K = 30, trials 0-2, the trained trials:
   `partition_only`.
 
 Every rq2.yaml and rq3.yaml cell runs FedAvg and FedProx (mu = 0.001) on the same
-partition: 72 runs per grid. mu was tuned once on `mu_tuning.yaml` (below). Both
+partition: 120 runs per grid. mu was tuned once on `mu_tuning.yaml` (below). Both
 grids are open for training; RQ2 is trained first.
 
 `mu_tuning.yaml` is the RQ3 cell at label-HD 0.45 x quantity-HD 0.35, at trials
@@ -381,16 +383,17 @@ file and was committed before any run: highest mean final-round accuracy over th
 two trials, FedAvg as mu = 0, the smallest mu within 0.01 of the top mean.
 
 `rq2_class_order.yaml` is a diagnostic for RQ2, not an RQ2 arm: rq2.yaml's capped
-FedAvg cells at label-HD 0.25, 0.45 and 0.70, trials 0-2, with `class_order:
+FedAvg cells at label-HD 0.25, 0.45 and 0.70, trials 0, 1, 2, 5 and 6, with `class_order:
 reversed` and the alpha each cell resolves written out in full. The cap concentrates
 the classes it splits last, so this checks whether the capped arm's per-class
 accuracy loss follows the class or its position in the split order. Level 0 is left
-out, since the cap does not bind there. 9 partitions, 9 runs; the 0.45 runs keep the
+out, since the cap does not bind there. 15 partitions, 15 runs; the 0.45 runs keep the
 ids they were trained under before the other levels were added. The rule the cells
-are read by is in `analysis/rq2_class_order.py`.
+are read by is in `analysis/rq2_class_order.py`; it was written for trials 0-2 and
+reads only those.
 
 `centralized.yaml` is the centralized baseline (config/centralized.yaml) at trials
-0-2: `federated.algorithm: centralized` with `partition: null`, the whole training
+0, 1, 2, 5 and 6: `federated.algorithm: centralized` with `partition: null`, the whole training
 set as one client, 10 epochs with one Adam (one round's local training, on the
 pooled data), base.yaml's model, learning rate and batch size. The epoch count is
 fixed in the config, not picked by test accuracy. Trial t has the federated runs'
@@ -803,3 +806,40 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     10-epoch result (0.9429 at trial 0, against the source paper's 95.60%)
   - Before any sharded training, every partition of the grid is generated in one
     process
+- Decided 2026-11-11, before any CIFAR-10 trial 5-6 result existed: the trained
+  CIFAR-10 experiments go from 3 to 5 trials, an examiner requirement applied
+  uniformly to every cell: `rq2.yaml` and `rq3.yaml` (48 new runs each), the
+  class-order check `rq2_class_order.yaml` (6) and the centralized baseline (2)
+  - The class-order check keeps its 2026-11-02 scope: the capped arm, FedAvg, label-HD
+    0.25, 0.45 and 0.70; level 0 and FedProx are left out on purpose. Its six trial 0-2
+    runs at 0.25 and 0.70, never trained so far, are trained with trials 5 and 6: 12
+    runs. Its verdict rule stays as registered, on trials 0-2 ("in >= 2 of 3 trials");
+    trials 5 and 6 are reported descriptively beside it
+  - The new trials are 5 and 6, not 3 and 4: those tuned FedProx's mu on RQ3's
+    0.45 x 0.35 cell (`mu_tuning.yaml`, partitions 58542f7748 and e4e78587f4), so no
+    reported run uses them. Trial t's seeds are derived from (20260912, t) as before
+  - No config_hash or partition_id of trials 0-2 moves: the FedAvg digests
+    f76969d1ec263096 (rq2) and f08f2173ce5df40d (rq3) still hold over those trials,
+    and the five-trial FedAvg cells are pinned as da0b61ad92f2f189 and
+    495aa172cb2279e3 before any trial 5-6 run
+  - Tolerance gate on the 48 trial 5-6 partitions of rq2 and rq3 (generated at
+    694af23 on a clean tree, before any training), under the 2026-11-08 rule: every
+    label-HD is within 0.05 of its target (largest deviation 0.031). At quantity
+    level 0.70 trial 6 realizes quantity-HD 0.645 (-0.055) at all four label levels
+    (partitions c2fb34610f, a708cdb233, 7d77de0792 and d1efd3c4a8, one shared size
+    draw), as trial 1 does (0.610). A quantity level is judged on its 20-seed mean
+    (decided 2026-10-06), and level 0.70 passes (0.668), so these four cells stay in
+    as listed: no recalibration, seed swap or dropped trial
+  - The new runs record per-class accuracy and balanced accuracy every round; trials
+    0-2, trained before that logging, have them only through reruns
+    (`experiments.per_class_accuracy`)
+  - Before the grids are trained, seven recorded runs are rerun through
+    `experiments.per_class_accuracy` at this commit, three at once, and must match
+    their recorded runs bit for bit (every round of history.csv, final accuracy): the
+    six index-order capped and uncapped FedAvg runs at label-HD 0.70, trials 0-2, which
+    the class-order comparison needs and which have no per-class data yet, and one
+    FedProx run (pure_label at 0.45, trial 0) for the proximal path. The grids start
+    only if all seven do
+  - Trained three shards at once (`--shard K/3`, each rq2, then rq3, the class-order
+    grid and the centralized baseline); every new partition is generated first, in
+    one process

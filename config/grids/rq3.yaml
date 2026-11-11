@@ -36,7 +36,12 @@
 #   python -m analysis.partition_validation
 #   python -m experiments.run_training --grid config/grids/rq3.yaml
 #
-# 4 label x 3 quantity levels x 3 trials = 36 partitions; x 2 algorithms = 72 runs.
+# Trials 0-2 were trained first. Trials 5 and 6 were added on 2026-11-11, before any of
+# their results existed: an examiner requirement, applied to every cell. Trials 3 and 4
+# tuned mu (mu_tuning.yaml), so no reported run uses them. Every trial 0-2 cell keeps
+# its config hash and partition.
+#
+# 4 label x 3 quantity levels x 5 trials = 60 partitions; x 2 algorithms = 120 runs.
 
 base: config/base.yaml
 
@@ -56,4 +61,4 @@ cases:
 sweep:
   partition.target_label_hd: [0.0, 0.25, 0.45, 0.70]
   partition.target_quantity_hd: [0.0, 0.35, 0.70]
-  runtime.trial: [0, 1, 2]
+  runtime.trial: [0, 1, 2, 5, 6]

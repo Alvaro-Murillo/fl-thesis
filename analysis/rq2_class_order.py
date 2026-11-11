@@ -247,11 +247,17 @@ def concentration_present(holders: dict) -> dict:
 def cells(
     rq2_grid: Path = RQ2_GRID, order_grid: Path = ORDER_GRID
 ) -> dict[tuple[float, str, int], ExperimentConfig]:
-    """(level, arm, trial) -> the FedAvg config of that cell."""
+    """(level, arm, trial) -> the FedAvg config of that cell, at the rule's trials (TRIALS).
+
+    The grids also hold trials 5 and 6 (added 2026-11-11); the rule was written for
+    trials 0-2 before those existed, so it does not read them.
+    """
     out, capped_alpha = {}, {}
     for config in expand(rq2_grid, for_training=False):
         p = config.partition
         if config.federated.algorithm != "fedavg" or p.target_label_hd not in LEVELS:
+            continue
+        if config.runtime.trial not in TRIALS:
             continue
         if p.mode.value == "pure_label":
             arm = "pure"
@@ -261,6 +267,8 @@ def cells(
         if arm == "capped index":
             capped_alpha[p.alpha] = p.target_label_hd
     for config in expand(order_grid, for_training=False):
+        if config.runtime.trial not in TRIALS:
+            continue
         level = capped_alpha[config.partition.alpha]  # the same float as rq2.yaml's cell
         out[(level, "capped reversed", config.runtime.trial)] = config
     return out

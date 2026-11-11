@@ -253,9 +253,9 @@ def test_select_filters_a_grid_by_dotted_keys():
             "partition.target_label_hd=0.70",
         ],
     )
-    assert len(chosen) == 6
+    assert len(chosen) == 10
     assert {c.partition.size_cap for c in chosen} == {"niid_bench", "none"}
-    assert {c.runtime.trial for c in chosen} == {0, 1, 2}
+    assert {c.runtime.trial for c in chosen} == {0, 1, 2, 5, 6}
     with pytest.raises(ValueError, match="no config matches"):
         select(configs, ["federated.algorithm=sgd"])
     with pytest.raises(ValueError, match="section.field=value"):

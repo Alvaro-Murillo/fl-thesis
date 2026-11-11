@@ -41,7 +41,8 @@ paper's: Jimenez-Gutierrez et al. (2026), "A thorough assessment of the non-IID
 data impact in federated learning", Section 4, "Models" (checked against
 arXiv:2503.17070 v1 and v2): K = 30 clients, Adam with learning rate 0.001,
 batch size 64, 40 communication rounds of 10 local epochs. The paper ran 5 or 10
-seeds; the grids here run trials 0-2. It gives no participation fraction for
+seeds; the CIFAR-10 grids here run trials 0, 1, 2, 5 and 6 (3 and 4 tuned FedProx's
+mu) and the Covtype grids trials 0-4. It gives no participation fraction for
 FedAvg or FedProx: a fraction is tuned for Rand only (Section 4.1), and its
 FedProx "aggregates local model updates from all devices" (Section 3.4; section
 numbers as in v2). So client_fraction 1.0 has every client train in every round.

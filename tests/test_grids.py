@@ -90,6 +90,8 @@ def test_quantity_skew_grid_expands_to_quantity_only_cells():
 LABEL_LEVELS = [0.0, 0.25, 0.45, 0.70]
 QUANTITY_LEVELS = [0.0, 0.35, 0.70]
 EDGE_LEVEL = 0.80
+FIRST_TRIALS = {0, 1, 2}  # trained first
+REPORTED_TRIALS = {0, 1, 2, 5, 6}  # 5 and 6 added 2026-11-11; 3 and 4 tuned mu
 RQ2_CURVES = {
     (PartitionMode.NATURAL_PER_CLASS, "none"): "147e58d391",
     (PartitionMode.NATURAL_PER_CLASS, "niid_bench"): "146de82d74",
@@ -117,7 +119,7 @@ def test_rq2_resolves_each_arm_on_its_own_20_trial_curve():
     from partitioning.calibration import NO_SKEW, alpha_for_target, load_calibration
 
     configs = rq2()
-    assert len(configs) == 3 * 4 * 3 * 2 and len({pid(c) for c in configs}) == 36
+    assert len(configs) == 3 * 4 * 5 * 2 and len({pid(c) for c in configs}) == 60
     for c in configs:
         p = c.partition
         assert p.K == 30 and p.target_quantity_hd is None and p.beta is None
@@ -133,14 +135,16 @@ def test_rq2_resolves_each_arm_on_its_own_20_trial_curve():
             measured = MEASURED_ALPHAS[(p.mode, p.size_cap)][p.target_label_hd]
             assert p.alpha == pytest.approx(measured, rel=1e-3)
     assert sorted({c.partition.target_label_hd for c in configs}) == LABEL_LEVELS
-    assert {c.runtime.trial for c in configs} == {0, 1, 2}
+    assert {c.runtime.trial for c in configs} == REPORTED_TRIALS
 
 
 def test_rq2_natural_cells_at_target_zero_are_the_rq1_alpha_1000_partitions():
     zero = {
         (c.partition.size_cap, c.runtime.trial): pid(c)
         for c in rq2()
-        if c.partition.target_label_hd == 0 and c.partition.mode is PartitionMode.NATURAL_PER_CLASS
+        if c.partition.target_label_hd == 0
+        and c.partition.mode is PartitionMode.NATURAL_PER_CLASS
+        and c.runtime.trial in FIRST_TRIALS  # RQ1 runs trials 0-2 only
     }
     assert zero == {
         ("none", 0): "268c0acde3",
@@ -156,7 +160,7 @@ def test_rq2_natural_cells_at_target_zero_are_the_rq1_alpha_1000_partitions():
 
 def test_rq3_is_combined_with_one_alpha_per_label_level_and_one_beta_per_quantity_level():
     configs = rq3()
-    assert len(configs) == 4 * 3 * 3 * 2 and len({pid(c) for c in configs}) == 36
+    assert len(configs) == 4 * 3 * 5 * 2 and len({pid(c) for c in configs}) == 60
     assert all(c.partition.mode is PartitionMode.COMBINED for c in configs)
     assert all(c.partition.min_size_policy == 0 and c.partition.K == 30 for c in configs)
     alphas, betas = {}, {}
@@ -193,8 +197,11 @@ def test_the_edge_level_is_only_in_the_partition_only_edge_grid():
 
 TUNED_MU = 0.001  # chosen on mu_tuning.yaml by the rule fixed there
 # sha256 (first 16 hex) of the grid's fedavg config hashes, in expansion order, as they
-# were before the fedprox case was added: adding it must not move a fedavg cell.
+# were before the fedprox case was added: adding it must not move a fedavg cell. The
+# first digest is over trials 0-2 and predates trials 5 and 6, which must not move it;
+# the second is over all five trials, pinned before any trial 5-6 run.
 FEDAVG_HASHES = {"rq2.yaml": "f76969d1ec263096", "rq3.yaml": "f08f2173ce5df40d"}
+FEDAVG_HASHES_5_TRIALS = {"rq2.yaml": "da0b61ad92f2f189", "rq3.yaml": "495aa172cb2279e3"}
 
 
 @pytest.mark.parametrize("name", ["rq2.yaml", "rq3.yaml"])
@@ -205,7 +212,7 @@ def test_rq2_and_rq3_pair_every_fedavg_cell_with_fedprox_at_the_tuned_mu(name):
         pairs.setdefault((pid(c), c.runtime.trial), set()).add(
             (c.federated.algorithm, c.federated.mu)
         )
-    assert len(pairs) == 36
+    assert len(pairs) == 60
     assert all(v == {("fedavg", 0.0), ("fedprox", TUNED_MU)} for v in pairs.values())
 
 
@@ -215,13 +222,16 @@ def test_the_fedavg_cells_keep_their_config_hashes(name):
 
     from experiments.config import config_hash
 
-    hashes = [
-        config_hash(c)
+    fedavg = [
+        c
         for c in expand(f"{GRIDS}/{name}", for_training=False)
         if c.federated.algorithm == "fedavg"
     ]
-    assert len(hashes) == 36
-    assert hashlib.sha256(",".join(hashes).encode()).hexdigest()[:16] == FEDAVG_HASHES[name]
+    digest = lambda hashes: hashlib.sha256(",".join(hashes).encode()).hexdigest()[:16]
+    first = [config_hash(c) for c in fedavg if c.runtime.trial in FIRST_TRIALS]
+    assert len(first) == 36 and digest(first) == FEDAVG_HASHES[name]
+    every = [config_hash(c) for c in fedavg]
+    assert len(every) == 60 and digest(every) == FEDAVG_HASHES_5_TRIALS[name]
 
 
 @pytest.mark.parametrize("name", ["rq2.yaml", "rq3.yaml"])
@@ -229,14 +239,16 @@ def test_rq2_and_rq3_are_open_for_training(name):
     grid = yaml.safe_load(open(f"{GRIDS}/{name}", encoding="utf-8"))
     assert "status" not in grid and "blocked_on" not in grid
     assert "partition_only" not in grid
-    assert len(expand(f"{GRIDS}/{name}", for_training=True)) == 72
+    assert len(expand(f"{GRIDS}/{name}", for_training=True)) == 120
 
 
-def test_the_centralized_grid_is_trials_0_to_2_with_no_partition():
+def test_the_centralized_grid_is_the_reported_trials_with_no_partition():
     configs = expand(f"{GRIDS}/centralized.yaml", for_training=True)
-    assert [c.runtime.trial for c in configs] == [0, 1, 2]
+    assert [c.runtime.trial for c in configs] == sorted(REPORTED_TRIALS)
     assert all(c.partition is None and c.federated.algorithm == "centralized" for c in configs)
-    assert len({config_hash(c) for c in configs}) == 3
+    assert len({config_hash(c) for c in configs}) == 5
+    # the three runs trained before trials 5 and 6 were added keep their ids
+    assert [config_hash(c) for c in configs[:3]] == ["68edceb2", "e997bce9", "55712819"]
 
 
 # --- what a grid may be expanded for ----------------------------------------
@@ -402,11 +414,15 @@ def test_the_class_order_grid_is_rq2s_capped_fedavg_cells_with_classes_reversed(
         and c.partition.target_label_hd in (0.25, 0.45, 0.70)
         and c.federated.algorithm == "fedavg"
     }
-    assert len(configs) == 9 and {(c.partition.alpha, c.runtime.trial) for c in configs} == set(
+    assert len(configs) == 15 and {(c.partition.alpha, c.runtime.trial) for c in configs} == set(
         capped
     )
     # the three runs trained at 0.45 before the other levels were added keep their ids
-    at_045 = [config_hash(c) for c in configs if c.partition.alpha == 0.6050899750391434]
+    at_045 = [
+        config_hash(c)
+        for c in configs
+        if c.partition.alpha == 0.6050899750391434 and c.runtime.trial in FIRST_TRIALS
+    ]
     assert at_045 == ["e9cb46cd", "3305baed", "52f05aeb"]
     for config in configs:
         reference = capped[(config.partition.alpha, config.runtime.trial)]

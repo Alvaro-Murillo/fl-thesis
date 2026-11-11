@@ -19,7 +19,11 @@
 #   python -m experiments.run_grid --grid config/grids/rq2_class_order.yaml
 #   python -m experiments.run_training --grid config/grids/rq2_class_order.yaml
 #
-# 3 levels x 3 trials = 9 partitions, 9 runs.
+# Trials 5 and 6 were added on 2026-11-11 with rq2.yaml's, before any of their results
+# existed. analysis/rq2_class_order.py's rule was written for trials 0-2 and reads only
+# those; trials 5 and 6 are reported next to it.
+#
+# 3 levels x 5 trials = 15 partitions, 15 runs.
 
 base: config/base.yaml
 
@@ -37,4 +41,4 @@ cases:
   - partition.alpha: 0.0973256177386462  # rq2.yaml, niid_bench arm, target_label_hd 0.70
 
 sweep:
-  runtime.trial: [0, 1, 2]
+  runtime.trial: [0, 1, 2, 5, 6]

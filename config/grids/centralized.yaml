@@ -1,13 +1,14 @@
-# The centralized baseline (config/centralized.yaml) at trials 0-2, the trials
-# every reported grid runs. Trial t has the init seed of the federated runs at
-# trial t, so both start from the same weights.
+# The centralized baseline (config/centralized.yaml) at trials 0, 1, 2, 5 and 6, the
+# trials every reported grid runs (5 and 6 added on 2026-11-11, with rq2.yaml's and
+# rq3.yaml's). Trial t has the init seed of the federated runs at trial t, so both
+# start from the same weights.
 #
 #   python -m experiments.run_training --grid config/grids/centralized.yaml
 #   python -m analysis.training_summary --grid config/grids/centralized.yaml --prefix centralized
 #
-# 3 runs, no partitions.
+# 5 runs, no partitions.
 
 base: config/centralized.yaml
 
 sweep:
-  runtime.trial: [0, 1, 2]
+  runtime.trial: [0, 1, 2, 5, 6]

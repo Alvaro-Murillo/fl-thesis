@@ -3,7 +3,8 @@
 #
 # Cell: combined at label-HD 0.45 x quantity-HD 0.35, read off the same curves as
 # rq3.yaml (alpha 0.411593, beta 0.863361), at trials 3 and 4. The reported grids
-# train trials 0-2, so no reported run, partition or seed is used to choose mu.
+# train trials 0-2 (and, from 2026-11-11, 5 and 6), so no reported run, partition or
+# seed is used to choose mu.
 # Accuracy is measured on the CIFAR-10 test set, as in every run.
 #
 # Candidates: the source paper's grid {0.001, 0.01, 0.1, 1, 10, 100}, with FedAvg
