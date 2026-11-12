@@ -17,7 +17,8 @@ changes no state and draws no random number. The final model is `model` after
 
 The confusion matrix and per-class accuracy are `federated.confusion`'s, which
 `experiments.run_training` now also records every round (per_class.csv, confusion.csv), so
-this module is for runs recorded before that.
+the reruns are for runs recorded before that. `recorded_per_class` reads a run's own
+files, with the checks below adapted to them, and `per_class_result` reads either kind.
 
 --grid selects the configs of a grid; --where narrows them by dotted-key equality, with
 the grid file's own keys and YAML values (`partition.target_label_hd=0.7`). Each must
@@ -33,6 +34,16 @@ A rerun is bit-exact when all of these hold:
 A rerun that is not bit-exact is saved with `bit_exact: false`, the sweep stops, and no
 later sweep starts while such a file exists. `load_per_class` raises for it, so nothing
 reads per-class results from a run that did not reproduce.
+
+A run trained with per-class logging is read from its own run folder instead
+(`recorded_per_class`). Its accuracies are history.csv's, and it is refused unless:
+    - confusion.csv holds exactly one full matrix for each round of history.csv, round 0
+      included, and per_class.csv one row for each;
+    - every matrix gives that round's history.csv accuracy;
+    - the last round's accuracy is the completed runs.jsonl row's final_acc, and its
+      balanced accuracy the row's final_balanced_acc;
+    - per_class.csv's per-class and balanced accuracies are the matrices', every round.
+Where a run has both its own files and a rerun, the two must hold the same matrices.
 
 A sweep refuses to start while a run is `running` in runs.jsonl, and stops if runs.jsonl
 changes before a rerun: per-class results must come from the recorded runs, with nothing
@@ -85,7 +96,12 @@ from experiments.run_training import describe, optimizer_factory, proximal_mu, s
 from experiments.seeding import configure_torch, seeds_for
 from experiments.tensors import TensorData, load_tensors
 from federated.aggregation import fedavg
-from federated.confusion import EVAL_BATCH, confusion_matrix, per_class_accuracy
+from federated.confusion import (
+    EVAL_BATCH,
+    balanced_accuracy,
+    confusion_matrix,
+    per_class_accuracy,
+)
 from federated.data import FederatedData
 from federated.loop import RoundResult, evaluate, run_federated
 from models.networks import build_model
@@ -100,7 +116,7 @@ CHECKS = (
 
 
 class NotBitExact(RuntimeError):
-    """A rerun, or an imported result, does not reproduce its recorded run."""
+    """A rerun, an imported result or a run's own per-class files do not match its recorded run."""
 
 
 def per_class_dir(out_dir: str | Path) -> Path:
@@ -204,6 +220,95 @@ def recorded_history(out_dir: str | Path, run_id: str) -> list[float]:
         Path(out_dir) / "runs" / run_id / "history.csv", float_precision="round_trip"
     )
     return history.sort_values("round")["global_test_acc"].tolist()
+
+
+def _matrices(table: pd.DataFrame, rounds: list[int], num_classes: int) -> list | None:
+    """One matrix per round from confusion.csv's rows, or None unless each round is one full matrix."""
+    if sorted(table["round"].unique().tolist()) != rounds:
+        return None
+    pairs = [(t, p) for t in range(num_classes) for p in range(num_classes)]
+    out = []
+    for r in rounds:
+        part = table[table["round"] == r]
+        true, predicted = part["true_class"].to_numpy(), part["predicted_class"].to_numpy()
+        if sorted(zip(true.tolist(), predicted.tolist())) != pairs:
+            return None
+        matrix = np.zeros((num_classes, num_classes), dtype=np.int64)
+        matrix[true, predicted] = part["count"].to_numpy()
+        out.append(matrix)
+    return out
+
+
+def recorded_per_class(out_dir: str | Path, run_id: str) -> dict:
+    """The per-class result a run recorded itself, checked against its recorded run.
+
+    Raises FileNotFoundError when the run folder has no confusion.csv, RuntimeError when
+    the run has no completed runs.jsonl row, and NotBitExact when a check fails.
+    """
+    run_dir = Path(out_dir) / "runs" / run_id
+    path = run_dir / "confusion.csv"
+    if not path.exists():
+        raise FileNotFoundError(f"run {run_id} recorded no confusion.csv in {run_dir}")
+    row = completed_rows(out_dir).get(run_id)
+    if row is None:
+        raise RuntimeError(f"run {run_id} has no completed row in runs.jsonl")
+    history = recorded_history(out_dir, run_id)
+    rounds = list(range(len(history)))
+    per_class = pd.read_csv(run_dir / "per_class.csv", float_precision="round_trip")
+    per_class = per_class.sort_values("round")
+    columns = [c for c in per_class.columns if c.startswith("acc_class_")]
+    confusions = _matrices(pd.read_csv(path), rounds, len(columns))
+    checks = {
+        "one_matrix_per_round": confusions is not None and per_class["round"].tolist() == rounds
+    }
+    if checks["one_matrix_per_round"]:
+        checks.update(
+            {
+                "confusions_match_accuracy": matches_accuracy(confusions, history),
+                "final_acc_equal": history[-1] == row["final_acc"],
+                "final_balanced_acc_equal": (
+                    balanced_accuracy(confusions[-1]) == row.get("final_balanced_acc")
+                ),
+                "per_class_csv_matches": np.array_equal(
+                    per_class[columns].to_numpy(),
+                    np.array([per_class_accuracy(m) for m in confusions]),
+                    equal_nan=True,
+                )
+                and per_class["balanced_acc"].tolist()
+                == [balanced_accuracy(m) for m in confusions],
+            }
+        )
+    failed = [check for check, ok in checks.items() if not ok]
+    if failed:
+        raise NotBitExact(f"run {run_id}'s own per-class files do not match its record: {failed}")
+    return {
+        "run_id": run_id,
+        "source": "recorded",
+        "partition_id": row["partition_id"],
+        "trial": row["trial"],
+        "accs": history,
+        "confusions": [m.tolist() for m in confusions],
+        "recorded_final_acc": row["final_acc"],
+        "git_commit": row.get("git_commit"),
+        "git_dirty": row.get("git_dirty"),
+        **checks,
+    }
+
+
+def per_class_result(out_dir: str | Path, run_id: str) -> dict:
+    """A run's checked per-class result: its own files if it recorded them, else its rerun.
+
+    Raises FileNotFoundError when it has neither.
+    """
+    try:
+        recorded = recorded_per_class(out_dir, run_id)
+    except FileNotFoundError:
+        return load_per_class(out_dir, run_id)
+    if output_path(out_dir, run_id).exists():
+        rerun_result = load_per_class(out_dir, run_id)
+        if rerun_result["confusions"] != recorded["confusions"]:
+            raise NotBitExact(f"run {run_id}: its rerun's matrices differ from its own records")
+    return recorded
 
 
 def checked(payload: dict, row: dict, history: list[float]) -> dict:

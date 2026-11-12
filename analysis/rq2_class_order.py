@@ -19,9 +19,18 @@ Arms at each level, FedAvg, trials 0-2:
     pure             rq2.yaml, pure_label; context only, and not rerun at 0.70
 A reversed config has no target; its level is that of the rq2.yaml capped cell whose alpha
 it repeats. Per-class accuracy is the final global model's recall on each class of the
-CIFAR-10 test set (1000 images per class), from `experiments.per_class_accuracy`, read
-through `load_per_class`, which refuses a rerun that did not reproduce its recorded run.
-training_summary has no class_order column, so here the arm names the order.
+CIFAR-10 test set (1000 images per class), read through
+`experiments.per_class_accuracy.per_class_result`: a run trained with per-class logging
+(every run trained from 2026-11-11 on) from its own confusion.csv, checked against its
+history.csv and runs.jsonl row; an earlier run from its per-class rerun, which must have
+reproduced the recorded run bit for bit. training_summary has no class_order column, so
+here the arm names the order.
+
+Trials 5 and 6 were added to the grids on 2026-11-11, before any of their results
+existed. They are reported beside the rule, descriptively, at each level: the per-class
+paired differences of each trial, their mean over all five trials, and the overall final
+accuracy by trial. They enter neither the gate, the verdict, the power flag nor the
+concentration check.
 
 Pre-registered rule. It was committed before any of the per-class data it covers was
 generated. It is applied at L = 0.25 and at L = 0.70, each on its own. At L = 0.45 the
@@ -100,12 +109,13 @@ the extra errors on the newly concentrated classes go (final confusion matrices,
 over trials).
 
 Writes, under results/analysis/:
-    rq2_class_order_per_class.csv  one row per level, arm, trial and class: per-class final
-                                   accuracy (empty where no per-class rerun was made),
-                                   holders, effective holders, zero-holders, run_id and
-                                   partition_id
+    rq2_class_order_per_class.csv  one row per level, arm, trial (0-2, 5 and 6) and class:
+                                   per-class final accuracy (empty where the run has no
+                                   per-class result), holders, effective holders,
+                                   zero-holders, run_id and partition_id
     rq2_class_order_verdicts.csv   one row per level: gate, verdict, low-power flag and the
-                                   concentration check
+                                   concentration check, then the overall differences at
+                                   trials 5 and 6 (descriptive)
     rq2_class_order_tables.md      every table
 With --partitions, only rq2_class_order_partitions.md, which holds the concentration tables.
 
@@ -124,7 +134,7 @@ from scipy.stats import spearmanr
 from experiments.config import ExperimentConfig, config_hash
 from experiments.datasets import load_labels
 from experiments.grid import expand
-from experiments.per_class_accuracy import load_per_class, per_class_accuracy
+from experiments.per_class_accuracy import per_class_accuracy, per_class_result
 from experiments.recording import atomic_write_text, git_provenance, load_partition, utc_stamp
 from experiments.run_training import stored_partition
 from partitioning.metrics import class_counts
@@ -133,6 +143,7 @@ RQ2_GRID = Path("config/grids/rq2.yaml")
 ORDER_GRID = Path("config/grids/rq2_class_order.yaml")
 LEVELS = (0.25, 0.45, 0.70)
 TRIALS = (0, 1, 2)
+DESCRIPTIVE_TRIALS = (5, 6)  # added 2026-11-11; reported beside the rule, not in it
 ARMS = ("pure", "capped index", "capped reversed", "uncapped")
 CLASSES = (
     "airplane",
@@ -245,29 +256,29 @@ def concentration_present(holders: dict) -> dict:
 
 # ---------------------------------------------------------------- data
 def cells(
-    rq2_grid: Path = RQ2_GRID, order_grid: Path = ORDER_GRID
+    rq2_grid: Path = RQ2_GRID, order_grid: Path = ORDER_GRID, trials: tuple[int, ...] = TRIALS
 ) -> dict[tuple[float, str, int], ExperimentConfig]:
-    """(level, arm, trial) -> the FedAvg config of that cell, at the rule's trials (TRIALS).
+    """(level, arm, trial) -> the FedAvg config of that cell, at `trials` (the rule's, TRIALS).
 
     The grids also hold trials 5 and 6 (added 2026-11-11); the rule was written for
-    trials 0-2 before those existed, so it does not read them.
+    trials 0-2 before those existed, so it does not read them. They are read with
+    trials=DESCRIPTIVE_TRIALS, for the descriptive tables only.
     """
     out, capped_alpha = {}, {}
     for config in expand(rq2_grid, for_training=False):
         p = config.partition
         if config.federated.algorithm != "fedavg" or p.target_label_hd not in LEVELS:
             continue
-        if config.runtime.trial not in TRIALS:
-            continue
         if p.mode.value == "pure_label":
             arm = "pure"
         else:
             arm = {"niid_bench": "capped index", "none": "uncapped"}[p.size_cap]
-        out[(p.target_label_hd, arm, config.runtime.trial)] = config
         if arm == "capped index":
             capped_alpha[p.alpha] = p.target_label_hd
+        if config.runtime.trial in trials:
+            out[(p.target_label_hd, arm, config.runtime.trial)] = config
     for config in expand(order_grid, for_training=False):
-        if config.runtime.trial not in TRIALS:
+        if config.runtime.trial not in trials:
             continue
         level = capped_alpha[config.partition.alpha]  # the same float as rq2.yaml's cell
         out[(level, "capped reversed", config.runtime.trial)] = config
@@ -285,13 +296,13 @@ def partition_counts(configs: dict) -> dict:
 
 
 def per_class_results(configs: dict) -> dict:
-    """(level, arm, trial) -> per-class payload, for the cells that have one (bit-exact only)."""
+    """(level, arm, trial) -> per-class payload, for the cells that have one (checked only)."""
     out = {}
     for key, config in configs.items():
         try:
-            out[key] = load_per_class(config.runtime.out_dir, config_hash(config))
+            out[key] = per_class_result(config.runtime.out_dir, config_hash(config))
         except FileNotFoundError:
-            continue  # not rerun; a result that is not bit-exact raises instead
+            continue  # neither recorded nor rerun; a result that fails its checks raises
     return out
 
 
@@ -372,6 +383,54 @@ def overall_by_trial(level: float, results: dict, arms) -> pd.DataFrame:
     table["reversed - index"] = table["capped reversed"] - table["capped index"]
     table.loc["mean"] = table.mean()
     return table
+
+
+def descriptive_tables(level: float, results: dict) -> tuple[list[str], dict]:
+    """Trials 5 and 6 beside the rule: per-class and overall differences, descriptive only."""
+    trials, everything = DESCRIPTIVE_TRIALS, TRIALS + DESCRIPTIVE_TRIALS
+    out = [
+        "\n### Trials 5 and 6, descriptive "
+        "(not in the gate, the verdict, the power flag or the concentration check)\n"
+    ]
+    have = [arm for arm in ARMS if all((level, arm, t) in results for t in trials)]
+    missing = [arm for arm in ("capped index", "capped reversed", "uncapped") if arm not in have]
+    if missing:
+        out.append(f"Per-class results missing at trials 5 and 6: {missing}.\n")
+        return out, {}
+    final = {
+        (arm, t): per_class_accuracy(results[(level, arm, t)]["confusions"][-1])
+        for arm in ARMS
+        for t in everything
+        if (level, arm, t) in results
+    }
+    table = pd.DataFrame(index=NAMES)
+    for arm, label in (("capped index", "index"), ("capped reversed", "reversed")):
+        for t in trials:
+            table[f"{label} - uncapped t{t}"] = final[(arm, t)] - final[("uncapped", t)]
+        table[f"{label} - uncapped, mean of 5"] = np.mean(
+            [final[(arm, t)] - final[("uncapped", t)] for t in everything], axis=0
+        )
+    table.loc["mean (= overall)"] = table.mean()
+    out.append("Per-class paired difference against uncapped, final accuracy\n")
+    out.append(md(table))
+
+    overall = pd.DataFrame(
+        {arm: [results[(level, arm, t)]["accs"][-1] for t in trials] for arm in have},
+        index=[f"trial {t}" for t in trials],
+    )
+    overall["index - uncapped"] = overall["capped index"] - overall["uncapped"]
+    overall["reversed - uncapped"] = overall["capped reversed"] - overall["uncapped"]
+    overall["reversed - index"] = overall["capped reversed"] - overall["capped index"]
+    out.append("\nOverall final accuracy, trials 5 and 6\n")
+    out.append(md(overall))
+    summary = {
+        f"descriptive_overall_{label}_minus_uncapped_t{t}": overall.loc[
+            f"trial {t}", f"{label} - uncapped"
+        ]
+        for label in ("index", "reversed")
+        for t in trials
+    }
+    return out, summary
 
 
 def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], dict | None]:
@@ -460,6 +519,8 @@ def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], 
     ]
     out.append("\n### Pre-registered gate and verdict\n")
     out.append(md(pd.DataFrame(rows, columns=["quantity", "value"]), index=False))
+    descriptive_text, descriptive = descriptive_tables(level, results)
+    out += descriptive_text
 
     zero = {
         arm: np.mean([(counts[(level, arm, t)][1] == 0).sum(axis=0) for t in TRIALS], axis=0)
@@ -525,6 +586,7 @@ def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], 
         },
         "concentration_present": conc["present"],
         **{f"spearman_{label}": rho for label, rho in rhos},
+        **descriptive,
     }
     return out, summary
 
@@ -581,6 +643,8 @@ def main() -> None:
         print(report)
         return
 
+    configs = {**configs, **cells(trials=DESCRIPTIVE_TRIALS)}
+    counts = partition_counts(configs)
     results = per_class_results(configs)
     text = ["# RQ2 class-order check: per-class tables\n", f"{provenance}\n"]
     summaries = []

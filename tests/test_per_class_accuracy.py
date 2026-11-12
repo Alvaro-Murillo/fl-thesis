@@ -21,6 +21,8 @@ from experiments.per_class_accuracy import (
     load_per_class,
     output_path,
     per_class_accuracy as recall,
+    per_class_result,
+    recorded_per_class,
     rerun,
     select,
     sweep,
@@ -139,6 +141,94 @@ def test_a_rerun_that_does_not_reproduce_is_saved_stops_the_sweep_and_is_refused
         load_per_class(tmp_path, config_hash(config))
     with pytest.raises(NotBitExact, match="not continuing"):
         sweep([other], log=lambda _: None)
+
+
+def run_file(config, name):
+    return Path(config.runtime.out_dir) / "runs" / config_hash(config) / name
+
+
+def rewrite_csv(path, change):
+    rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+    columns = list(rows[0])
+    rows = change(rows)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_a_run_s_own_per_class_files_are_read_and_match_its_rerun(tmp_path):
+    config = trained(tmp_path)
+    run_id = config_hash(config)
+    own = recorded_per_class(tmp_path, run_id)
+    with history_path(config).open(newline="", encoding="utf-8") as fh:
+        recorded = [float(row["global_test_acc"]) for row in csv.DictReader(fh)]
+    assert own["source"] == "recorded" and own["accs"] == recorded  # round 0 first
+    assert len(own["confusions"]) == config.federated.rounds + 1
+    assert np.array(own["confusions"][-1]).sum() == N_TEST
+    assert per_class_result(tmp_path, run_id) == own
+
+    assert sweep([config], log=lambda _: None) == (1, 0)  # a rerun as well
+    assert load_per_class(tmp_path, run_id)["confusions"] == own["confusions"]
+    assert per_class_result(tmp_path, run_id)["source"] == "recorded"
+
+
+def add_one_correct_image(rows):
+    last = max(int(r["round"]) for r in rows)
+    for r in rows:  # (t + 1) / (n + 1) != t / n unless every image was already correct
+        if int(r["round"]) == last and r["true_class"] == r["predicted_class"] == "0":
+            r["count"] = str(int(r["count"]) + 1)
+    return rows
+
+
+def drop_the_last_round(rows):
+    last = max(int(r["round"]) for r in rows)
+    return [r for r in rows if int(r["round"]) != last]
+
+
+def change_a_class_accuracy(rows):
+    rows[-1]["acc_class_0"] = str(float(rows[-1]["acc_class_0"]) + 0.5)
+    return rows
+
+
+@pytest.mark.parametrize(
+    "name, change",
+    [
+        ("confusion.csv", add_one_correct_image),
+        ("confusion.csv", drop_the_last_round),
+        ("per_class.csv", change_a_class_accuracy),
+    ],
+    ids=["matrix", "round", "per_class_csv"],
+)
+def test_own_per_class_files_that_do_not_match_the_record_are_refused(tmp_path, name, change):
+    config = trained(tmp_path)
+    rewrite_csv(run_file(config, name), change)
+    with pytest.raises(NotBitExact, match="do not match its record"):
+        recorded_per_class(tmp_path, config_hash(config))
+    with pytest.raises(NotBitExact):
+        per_class_result(tmp_path, config_hash(config))
+
+
+def test_a_rerun_that_differs_from_the_own_files_is_refused(tmp_path):
+    config = trained(tmp_path)
+    run_id = config_hash(config)
+    sweep([config], log=lambda _: None)
+    path = output_path(tmp_path, run_id)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["confusions"][0][0][0] += 1  # its stored bit_exact stays true
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(NotBitExact, match="differ"):
+        per_class_result(tmp_path, run_id)
+
+
+def test_without_own_files_the_rerun_is_read_and_without_either_nothing(tmp_path):
+    config = trained(tmp_path)
+    run_id = config_hash(config)
+    run_file(config, "confusion.csv").unlink()  # as for a run trained before the logging
+    with pytest.raises(FileNotFoundError):
+        per_class_result(tmp_path, run_id)
+    sweep([config], log=lambda _: None)
+    assert per_class_result(tmp_path, run_id)["source"] == "rerun"
 
 
 def test_a_centralized_config_is_refused(tmp_path):

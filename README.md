@@ -81,7 +81,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - quantity_levels.py - the 20-seed feasibility check of a grid's quantity levels
   - per_class_accuracy.py - per-class test accuracy of recorded runs, by retraining
     them through run_training's calls; a rerun that does not reproduce its recorded
-    run bit for bit is refused
+    run bit for bit is refused. A run trained with per-class logging is read from its
+    own confusion.csv instead, checked against its history.csv and runs.jsonl row
 - config/ - base.yaml, smoke.yaml, smoke_quantity_only.yaml, smoke_pure_label.yaml,
   smoke_combined.yaml, the pipeline-check configs sanity_iid.yaml,
   sanity_label_skew.yaml and sanity_quantity_skew.yaml, the centralized baseline
@@ -171,8 +172,10 @@ checks and copies per-class results made earlier with the same calls:
     python -m experiments.per_class_accuracy --grid config/grids/rq2_class_order.yaml
     python -m experiments.per_class_accuracy --grid config/grids/rq2.yaml --where federated.algorithm=fedavg partition.mode=natural_per_class partition.target_label_hd=0.7
 
-RQ2's class-order check, from the stored partitions and the per-class results
-(`--partitions`: the concentration tables only, no per-class data needed):
+RQ2's class-order check, from the stored partitions and the per-class results (each
+run's own files, or its rerun for a run trained before per-class logging; trials 5 and
+6 are reported beside the rule, descriptively; `--partitions`: the concentration
+tables only, no per-class data needed):
 
     python -m analysis.rq2_class_order --partitions
     python -m analysis.rq2_class_order
@@ -390,7 +393,7 @@ accuracy loss follows the class or its position in the split order. Level 0 is l
 out, since the cap does not bind there. 15 partitions, 15 runs; the 0.45 runs keep the
 ids they were trained under before the other levels were added. The rule the cells
 are read by is in `analysis/rq2_class_order.py`; it was written for trials 0-2 and
-reads only those.
+applies only to those. Trials 5 and 6 are reported beside it, descriptively.
 
 `centralized.yaml` is the centralized baseline (config/centralized.yaml) at trials
 0, 1, 2, 5 and 6: `federated.algorithm: centralized` with `partition: null`, the whole training
@@ -478,9 +481,11 @@ Everything lands under `results/` (gitignored), written atomically:
 - `per_class/{run_id}.json` - a rerun's confusion matrix on the test set after every
   round (round 0 first), its accuracies, and each bit-exactness check against the
   recorded run
-- `analysis/rq2_class_order_*` - `per_class.csv` (one row per level, arm, trial and
-  class: accuracy, holders, effective holders, zero-holders), `verdicts.csv` (one
-  row per level), `tables.md`, and `partitions.md` (concentration only)
+- `analysis/rq2_class_order_*` - `per_class.csv` (one row per level, arm, trial (0-2,
+  5 and 6) and class: accuracy, holders, effective holders, zero-holders),
+  `verdicts.csv` (one row per level: the rule on trials 0-2, then the trial 5-6
+  overall differences, descriptive), `tables.md`, and `partitions.md` (concentration
+  only)
 
 Partitions are addressed by the fields that determine the split, so training
 knobs never invalidate a cached partition, and FedAvg and FedProx at the same
@@ -843,3 +848,15 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   - Trained three shards at once (`--shard K/3`, each rq2, then rq3, the class-order
     grid and the centralized baseline); every new partition is generated first, in
     one process
+- CIFAR-10 trials 5 and 6 trained (2026-11-11 to 11-12, at 6fa99fa on a clean tree).
+  The seven per-class reruns matched their recorded runs bit for bit, and only then
+  did the grids start. All 110 runs completed, with no failure or restart. Three at once
+  took 23.3 min per FedAvg run and 25.9 min per FedProx run (14.7 h in all), 1.44 and
+  1.52 times the sequential throughput, against 2.24 on Covtype
+  - The class-order analysis reads a run's per-class result from its own
+    confusion.csv when it has one (every run trained from 2026-11-11 on), checked
+    against its history.csv and runs.jsonl row, and from its rerun otherwise; where a
+    run has both, they must hold the same matrices. All 175 runs with their own files
+    (110 CIFAR-10, 65 Covtype) pass the checks. Trials 5 and 6 are reported beside the
+    rule at each level (per-class and overall differences, and the mean of the five
+    trials) and enter none of its steps

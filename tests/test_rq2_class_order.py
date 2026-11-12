@@ -14,6 +14,7 @@ from analysis.rq2_class_order import (
     concentration,
     concentration_present,
     concentration_tables,
+    descriptive_tables,
     gate,
     level_result,
     low_power,
@@ -190,3 +191,44 @@ def test_cells_find_every_arm_at_every_level():
         "3305baed",
         "52f05aeb",
     ]
+
+
+def test_cells_at_trials_5_and_6_are_the_same_arms_and_leave_the_rule_s_cells_alone():
+    rule, extra = cells(), cells(trials=(5, 6))
+    arms = ("pure", "capped index", "capped reversed", "uncapped")
+    assert set(extra) == {(level, arm, t) for level in LEVELS for arm in arms for t in (5, 6)}
+    for (level, arm, _), config in extra.items():
+        assert config.partition.alpha == rule[(level, arm, 0)].partition.alpha
+    assert {config_hash(c) for c in rule.values()}.isdisjoint(
+        config_hash(c) for c in extra.values()
+    )
+
+
+def confusion_for(accuracies):
+    """A 10-class matrix of 1000 images per class with the given per-class accuracies."""
+    cm = np.zeros((10, 10), dtype=int)
+    for c, acc in enumerate(accuracies):
+        cm[c, c] = round(acc * 1000)
+        cm[c, (c + 1) % 10] = 1000 - cm[c, c]
+    return {"confusions": [cm.tolist()], "accs": [np.trace(cm) / cm.sum()]}
+
+
+def test_trials_5_and_6_are_reported_with_the_mean_of_all_five():
+    flat = np.full(10, 0.5)
+    truck_down = flat.copy()
+    truck_down[9] = 0.4  # index - uncapped = -0.1 on truck, -0.01 overall
+    results = {}
+    for t in (0, 1, 2, 5, 6):
+        results[(0.45, "uncapped", t)] = confusion_for(flat)
+        results[(0.45, "capped reversed", t)] = confusion_for(flat)
+        results[(0.45, "capped index", t)] = confusion_for(truck_down if t == 5 else flat)
+    text, summary = descriptive_tables(0.45, results)
+    assert summary["descriptive_overall_index_minus_uncapped_t5"] == pytest.approx(-0.01)
+    assert summary["descriptive_overall_index_minus_uncapped_t6"] == 0
+    assert summary["descriptive_overall_reversed_minus_uncapped_t5"] == 0
+    table = next(block for block in text if "mean of 5" in block)
+    truck = next(line for line in table.splitlines() if "9 truck" in line).split("|")
+    # columns: index - uncapped t5, t6, mean of 5, then the reversed ones
+    assert float(truck[2]) == pytest.approx(-0.1) and float(truck[4]) == pytest.approx(-0.02)
+    del results[(0.45, "capped reversed", 6)]
+    assert descriptive_tables(0.45, results)[1] == {}
