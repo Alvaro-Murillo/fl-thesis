@@ -860,3 +860,21 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     (110 CIFAR-10, 65 Covtype) pass the checks. Trials 5 and 6 are reported beside the
     rule at each level (per-class and overall differences, and the mean of the five
     trials) and enter none of its steps
+- Class-order check results (`analysis.rq2_class_order` at d01f857 on a clean tree; the
+  rule as registered, on trials 0-2). The cap's concentration (on holders) is present
+  at all three levels
+  - 0.25: gate met (index - uncapped D = 0.122; ship and truck lower than uncapped in
+    3 of 3 trials). Position: reversed - uncapped D = 0.108, airplane and automobile
+    lower in 3 of 3, ship and truck in 0 of 3
+  - 0.45: gate met (D = 0.265) and Position (D = 0.322), as on 2026-10-29
+  - 0.70: gate met (D = 0.060; ship lower in 2 of 3, truck in 3 of 3). Inconclusive:
+    reversed - uncapped D = -0.016, so (a) fails; airplane is lower in 3 of 3 but
+    automobile in 1 of 3, so (b) fails; ship and truck are lower in 0 of 3. Low-power,
+    as registered: the overall index - uncapped difference changes sign across trials
+    (-0.0505, +0.0558, -0.0233)
+  - Trials 5 and 6, descriptive: at 0.25 and 0.45 both show the same pattern, the
+    index order's loss on ship and truck and the reversed order's on airplane and
+    automobile, with ship and truck not lower in reversed order except truck at 0.45
+    trial 6 (-0.005). At 0.70 reversed airplane is higher than uncapped in trial 5
+    (+0.189) and lower in trial 6 (-0.437); over the five trials reversed - uncapped
+    is -0.277 on airplane, -0.062 on automobile, +0.096 on ship and +0.101 on truck
