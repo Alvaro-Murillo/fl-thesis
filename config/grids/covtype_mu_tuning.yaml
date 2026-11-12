@@ -1,6 +1,7 @@
-# FedProx mu for Covtype, tuned once at one mid-skew cell. Blocked until the Covtype
-# FedAvg grid and the CIFAR-10 trial extension are trained; then trained in three
-# shards (--shard 0/3, 1/3, 2/3). The chosen mu is then fixed for every FedProx cell
+# FedProx mu for Covtype, tuned once at one mid-skew cell. Was blocked until the
+# Covtype FedAvg grid and the CIFAR-10 trial extension were trained; both were by
+# 2026-11-12, and it is open for training since then, in three shards (--shard 0/3,
+# 1/3, 2/3). The chosen mu is then fixed for every FedProx cell
 # of covtype_rq2.yaml; it is not re-tuned per cell. FedProx runs in the same block
 # as the rest, since three runs at once give 2.24 times the sequential throughput.
 #
@@ -22,13 +23,12 @@
 # requires mu > 0, and mu = 0 is FedAvg bit for bit). The result then goes back to
 # the author, with the best mu > 0 under the same rule alongside.
 #
-#   python -m experiments.run_grid --grid config/grids/covtype_mu_tuning.yaml
-#   python -m experiments.run_training --grid config/grids/covtype_mu_tuning.yaml
+#   python -m experiments.run_grid --grid config/grids/covtype_mu_tuning.yaml   (once, first)
+#   python -m experiments.run_training --grid config/grids/covtype_mu_tuning.yaml --shard 0/3
+#   python -m experiments.run_training --grid config/grids/covtype_mu_tuning.yaml --shard 1/3
+#   python -m experiments.run_training --grid config/grids/covtype_mu_tuning.yaml --shard 2/3
 #
 # 7 settings x 2 trials = 14 runs (2 FedAvg, 12 FedProx) over 2 partitions.
-
-status: blocked
-blocked_on: the Covtype FedAvg grid and the CIFAR-10 trial extension are trained first
 
 base: config/covtype.yaml
 

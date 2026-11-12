@@ -458,7 +458,7 @@ COVTYPE_CURVES = {
     [
         ("covtype_rq2", 60, 60, True),
         ("covtype_centralized", 5, 0, True),
-        ("covtype_mu_tuning", 14, 2, False),
+        ("covtype_mu_tuning", 14, 2, True),
         ("covtype_centralized_steps", 5, 0, False),
     ],
 )

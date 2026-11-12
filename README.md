@@ -88,8 +88,9 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   sanity_label_skew.yaml and sanity_quantity_skew.yaml, the centralized baseline
   centralized.yaml, Covtype's covtype.yaml and covtype_centralized.yaml, and grids/
   (rq1.yaml, rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, quantity_skew.yaml,
-  mu_tuning.yaml, rq2_class_order.yaml, centralized.yaml, and the blocked
-  covtype_rq2.yaml, covtype_mu_tuning.yaml and covtype_centralized.yaml)
+  mu_tuning.yaml, rq2_class_order.yaml, centralized.yaml, covtype_rq2.yaml,
+  covtype_centralized.yaml, covtype_mu_tuning.yaml, and the blocked
+  covtype_centralized_steps.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -416,9 +417,9 @@ at level 0. The Covtype grids, trained three shards at once:
   FedProx cases are added once mu is tuned.
 - `covtype_centralized.yaml` (open) - config/covtype_centralized.yaml at trials
   0-4, 10 epochs: the pre-specified baseline.
-- `covtype_mu_tuning.yaml` (blocked until the Covtype FedAvg grid and the CIFAR-10
-  trial extension are trained) - pure_label at label-HD 0.35, trials 5-6, FedAvg
-  and FedProx at the six mu values, with mu_tuning.yaml's rule: 14 runs.
+- `covtype_mu_tuning.yaml` (open since 2026-11-12, once the Covtype FedAvg grid and
+  the CIFAR-10 trial extension were trained) - pure_label at label-HD 0.35, trials
+  5-6, FedAvg and FedProx at the six mu values, with mu_tuning.yaml's rule: 14 runs.
 - `covtype_centralized_steps.yaml` (blocked, trained last) - the centralized
   baseline for 400 epochs, the optimizer steps of one 40 x 10 federated run, trials
   0-4. A post-hoc sensitivity check added after seeing the 10-epoch result; its
