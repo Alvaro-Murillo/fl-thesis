@@ -1,5 +1,6 @@
 # RQ2 on Covtype - pure vs natural label skew, matched on realized label-HD.
-# Open for training since 2026-11-08 (FedAvg cases), three shards at once:
+# Open for training since 2026-11-08 (FedAvg cases; FedProx cases since 2026-11-13),
+# three shards at once:
 #
 #   python -m experiments.run_grid --grid config/grids/covtype_rq2.yaml   (once, first)
 #   python -m experiments.run_training --grid config/grids/covtype_rq2.yaml --shard 0/3
@@ -28,15 +29,19 @@
 # reaches 29.2 of 30 clients on average), so the two natural arms' level-0 partitions
 # differ (label-HD 0.011 capped, 0.008 uncapped) and both are trained.
 #
-# FedProx: one case per arm next to each FedAvg case, at the mu
-# covtype_mu_tuning.yaml selects, added once it is tuned, so no config hash carries
-# a provisional mu. The 60 FedAvg hashes are pinned by a test and must not change.
+# Each arm runs FedAvg and FedProx. FedProx's mu = 0.001 was chosen once, on
+# covtype_mu_tuning.yaml (pure_label at label-HD 0.35, trials 5-6), by the rule fixed
+# there before any run: mean final accuracy 0.8943 at mu 0.001 against 0.8639 for
+# FedAvg; no other mu was within 0.01 of the top (next: 0.8535 at 0.01). The FedProx
+# cases were added after that, so no config hash carries a provisional mu; the 60
+# FedAvg hashes are pinned by a test and did not change.
 #
 #   python -m analysis.partition_validation --grid config/grids/covtype_rq2.yaml --prefix covtype_rq2
 #
-# 3 arms x 4 levels x 5 trials = 60 partitions and 60 FedAvg runs. The centralized
-# baseline is covtype_centralized.yaml (5 runs). Measured alone, a FedAvg run takes
-# 80.2 min; three at once give 2.24 times the throughput.
+# 3 arms x 4 levels x 5 trials = 60 partitions; x 2 algorithms = 120 runs. The
+# centralized baseline is covtype_centralized.yaml (5 runs). Measured alone, a FedAvg
+# run takes 80.2 min; three at once give 2.24 times the throughput. At three at once
+# a FedProx run took 118-132 min in covtype_mu_tuning.yaml.
 
 base: config/covtype.yaml
 
@@ -51,14 +56,31 @@ cases:
     partition.calibration_id: c517442ecf  # natural_per_class uncapped, Covtype, 20 trials
     federated.algorithm: fedavg
   - partition.mode: natural_per_class
+    partition.size_cap: none
+    partition.min_size_policy: 10
+    partition.calibration_id: c517442ecf
+    federated.algorithm: fedprox
+    federated.mu: 0.001
+  - partition.mode: natural_per_class
     partition.size_cap: niid_bench
     partition.min_size_policy: 10
     partition.calibration_id: ea8e56e2d6  # natural_per_class niid_bench, Covtype, 20 trials
     federated.algorithm: fedavg
+  - partition.mode: natural_per_class
+    partition.size_cap: niid_bench
+    partition.min_size_policy: 10
+    partition.calibration_id: ea8e56e2d6
+    federated.algorithm: fedprox
+    federated.mu: 0.001
   - partition.mode: pure_label
     partition.min_size_policy: 0
     partition.calibration_id: a9a59164f5  # pure_label, Covtype, 20 trials
     federated.algorithm: fedavg
+  - partition.mode: pure_label
+    partition.min_size_policy: 0
+    partition.calibration_id: a9a59164f5
+    federated.algorithm: fedprox
+    federated.mu: 0.001
 
 sweep:
   partition.target_label_hd: [0.0, 0.15, 0.35, 0.50]

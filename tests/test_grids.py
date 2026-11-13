@@ -456,7 +456,7 @@ COVTYPE_CURVES = {
 @pytest.mark.parametrize(
     "name, runs, partitions, open_for_training",
     [
-        ("covtype_rq2", 60, 60, True),
+        ("covtype_rq2", 120, 60, True),
         ("covtype_centralized", 5, 0, True),
         ("covtype_mu_tuning", 14, 2, True),
         ("covtype_centralized_steps", 5, 0, False),
@@ -479,6 +479,7 @@ def test_the_covtype_grids_train_the_dnn_on_covtype(name, runs, partitions, open
 
 COVTYPE_LEVELS = {0.0, 0.15, 0.35, 0.50}  # the level rule on Covtype's 20-seed ceilings
 COVTYPE_FEDAVG_HASHES = "b3918f6082faab77"
+COVTYPE_TUNED_MU = 0.001  # chosen on covtype_mu_tuning.yaml by the rule fixed there
 
 
 def test_covtype_rq2_is_every_arm_at_every_rule_level_on_its_covtype_curve():
@@ -487,11 +488,21 @@ def test_covtype_rq2_is_every_arm_at_every_rule_level_on_its_covtype_curve():
     for c in configs:
         p = c.partition
         assert p.calibration_id == COVTYPE_CURVES[(p.mode.value, p.size_cap)]
-        assert c.federated.algorithm == "fedavg"
         cells.setdefault((p.mode.value, p.size_cap), set()).add(p.target_label_hd)
         assert (p.alpha == 1000.0) == (p.target_label_hd == 0.0)
     assert cells == {arm: COVTYPE_LEVELS for arm in COVTYPE_CURVES}
     assert {c.runtime.trial for c in configs} == {0, 1, 2, 3, 4}
+
+
+def test_covtype_rq2_pairs_every_fedavg_cell_with_fedprox_at_the_tuned_mu():
+    """Both algorithms on every partition; FedProx's mu is the one tuned on trials 5-6."""
+    pairs = {}
+    for c in expand(f"{GRIDS}/covtype_rq2.yaml", for_training=False):
+        pairs.setdefault((pid(c), c.runtime.trial), set()).add(
+            (c.federated.algorithm, c.federated.mu)
+        )
+    assert len(pairs) == 60
+    assert all(v == {("fedavg", 0.0), ("fedprox", COVTYPE_TUNED_MU)} for v in pairs.values())
 
 
 def test_the_covtype_fedavg_cells_keep_their_config_hashes():

@@ -413,13 +413,15 @@ the RQ2 arms' common ceiling, 0.593, gives the Covtype levels 0, 0.15, 0.35 and
 at level 0. The Covtype grids, trained three shards at once:
 
 - `covtype_rq2.yaml` (open) - rq2.yaml's three arms at the four Covtype levels,
-  trials 0-4: 12 cells, 60 partitions and 60 FedAvg runs, whose hashes a test pins.
-  FedProx cases are added once mu is tuned.
+  trials 0-4: 12 cells, 60 partitions and 120 runs, FedAvg and FedProx (mu = 0.001)
+  on each partition. The 60 FedAvg hashes are pinned by a test and did not move when
+  the FedProx cases were added, once mu was tuned.
 - `covtype_centralized.yaml` (open) - config/covtype_centralized.yaml at trials
   0-4, 10 epochs: the pre-specified baseline.
 - `covtype_mu_tuning.yaml` (open since 2026-11-12, once the Covtype FedAvg grid and
   the CIFAR-10 trial extension were trained) - pure_label at label-HD 0.35, trials
   5-6, FedAvg and FedProx at the six mu values, with mu_tuning.yaml's rule: 14 runs.
+  Trained; the rule picked mu = 0.001.
 - `covtype_centralized_steps.yaml` (blocked, trained last) - the centralized
   baseline for 400 epochs, the optimizer steps of one 40 x 10 federated run, trials
   0-4. A post-hoc sensitivity check added after seeing the 10-epoch result; its
@@ -879,3 +881,27 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     trial 6 (-0.005). At 0.70 reversed airplane is higher than uncapped in trial 5
     (+0.189) and lower in trial 6 (-0.437); over the five trials reversed - uncapped
     is -0.277 on airplane, -0.062 on automobile, +0.096 on ship and +0.101 on truck
+- Covtype FedProx mu tuned on `covtype_mu_tuning.yaml` (pure_label, label-HD 0.35,
+  trials 5-6, 40 rounds x 10 epochs; all 14 runs at 3992991 on a clean tree, trained
+  2026-11-12 to 11-13, three at once). Final accuracy, trial 5 / trial 6 / mean:
+
+  | mu | trial 5 | trial 6 | mean |
+  |---|---|---|---|
+  | 0 (FedAvg) | 0.8578 | 0.8700 | 0.8639 |
+  | 0.001 | 0.8921 | 0.8966 | 0.8943 |
+  | 0.01 | 0.8482 | 0.8587 | 0.8535 |
+  | 0.1 | 0.7431 | 0.7562 | 0.7497 |
+  | 1 | 0.7104 | 0.7195 | 0.7149 |
+  | 10 | 0.6566 | 0.6740 | 0.6653 |
+  | 100 | 0.4883 | 0.4876 | 0.4880 |
+
+  - The rule takes mu = 0.001: the top mean, with no other mu within 0.01 of it.
+    Accuracy falls from mu = 0.1 up (on CIFAR-10 from mu = 1). mu = 0.001 is 0.030
+    above FedAvg and mu = 0.01 is 0.010 below it, where on CIFAR-10 mu = 0.001 to 0.1
+    were all within 0.01 of the top. FedAvg's final accuracy is below its best in both
+    trials (by 0.018 and 0.006), FedProx's at 0.001 within 0.0003 of its best. Two
+    trials, read by the rule only
+  - Measured, three at once: 118-132 min per FedProx run and 110 min per FedAvg run
+- `covtype_rq2.yaml` gains its 60 FedProx cases at mu = 0.001, one next to each FedAvg
+  case; the FedAvg digest b3918f6082faab77 and the 60 partitions are unchanged. Open
+  for training: 20 FedProx runs per shard, about 40 h three at once
