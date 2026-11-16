@@ -425,7 +425,8 @@ at level 0. The Covtype grids, trained three shards at once:
   runs were trained; trained last) - the centralized
   baseline for 400 epochs, the optimizer steps of one 40 x 10 federated run, trials
   0-4. A post-hoc sensitivity check added after seeing the 10-epoch result; its
-  `label` is written into every one of its runs.jsonl rows.
+  `label` is written into every one of its runs.jsonl rows. Trained; its final
+  accuracy is below the 10-epoch baseline's.
 
 A cell is recalibrated only if its 20-seed mean misses its target by more than
 0.05. A single seed outside ±0.05 is listed and handled by the realized-HD
@@ -915,3 +916,29 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   FedProx run (1.32 times FedAvg; the CIFAR-10 ratio was 1.18)
 - `covtype_centralized_steps.yaml` open for training (2026-11-16): the Covtype
   FedProx runs it waited for are trained. No config_hash moves
+- `covtype_centralized_steps.yaml` trained (2026-11-16, at 72cea89 on a clean tree):
+  all 5 runs completed. A power cut stopped trials 3 and 4 at about epoch 250; they
+  were trained again from epoch 0. The first 10 epochs of every run (accuracy, test
+  loss, training loss) are identical to its 10-epoch run. Per trial, final accuracy
+  at 10 and 400 epochs and the best epoch of the 400:
+
+  | trial | 10 epochs | 400 epochs | balanced, 10 / 400 | best (epoch) |
+  |---|---|---|---|---|
+  | 0 | 0.9429 | 0.9387 | 0.9053 / 0.8831 | 0.9582 (82) |
+  | 1 | 0.9408 | 0.9487 | 0.9093 / 0.9027 | 0.9572 (62) |
+  | 2 | 0.9431 | 0.9413 | 0.9145 / 0.8626 | 0.9583 (59) |
+  | 3 | 0.9404 | 0.9027 | 0.8844 / 0.8776 | 0.9586 (85) |
+  | 4 | 0.9416 | 0.9491 | 0.9006 / 0.8790 | 0.9578 (61) |
+  | mean | 0.9418 | 0.9361 | 0.9028 / 0.8810 | 0.9580 |
+
+  - Final accuracy at 400 epochs is below the 10-epoch baseline on average (-0.006)
+    and spread far wider (sd 0.019 against 0.001); balanced accuracy is lower in all
+    five trials. The baseline stays the pre-specified 10 epochs
+  - Test loss is lowest at epochs 19-44 (0.125-0.129) and is 0.49-10.5 at epoch 400.
+    Training loss is lowest at epochs 51-66 (0.085-0.089) and higher after that (0.12-0.53
+    at epoch 400), so the late decline is not overfitting alone: at the constant
+    learning rate of 0.001, training does not settle. Over epochs 100-400, test accuracy
+    drops below 0.93 in 7 to 25 epochs per trial
+  - The best epoch (0.958) is chosen on the test set, as Covtype has no validation
+    split here, so it is an optimistic figure and is not reported as a baseline
+  - Measured: 99.6-104.4 min per run three at once, 83.9-85.9 min two at once
