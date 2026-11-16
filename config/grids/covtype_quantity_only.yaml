@@ -1,0 +1,36 @@
+# Deliberate quantity skew on Covtype: quantity_only (MinSize-Dirichlet) across beta, K = 30.
+#
+# Partition-only: no training. The reference for RQ1 on Covtype: the range of quantity-HD
+# that deliberate quantity skew spans at K = 30, and the beta whose quantity-HD equals the
+# incidental quantity-HD of natural label partitioning. Same betas as quantity_skew.yaml
+# (the exact floats of partitioning.calibration.DEFAULT_BETAS), over trials 0-19, so the
+# cells are the partitions of a 20-trial quantity_only curve on Covtype at K = 30.
+#
+#   python -m experiments.run_grid --grid config/grids/covtype_quantity_only.yaml
+#
+# quantity_floor null = FedArtML's 3 * num_classes + 1 (22 on Covtype). min_size_policy
+# must be 0 and alpha null: this mode never redraws and draws no label mix.
+#
+# 30 betas x 20 trials = 600 partitions.
+
+partition_only: true
+
+base: config/covtype.yaml
+
+constant:
+  partition.mode: quantity_only
+  partition.K: 30
+  partition.alpha: null
+  partition.min_size_policy: 0
+  partition.quantity_floor: null
+
+sweep:
+  partition.beta: [0.001, 0.0016102620275609393, 0.002592943797404667, 0.0041753189365604,
+    0.006723357536499335, 0.010826367338740546, 0.017433288221999882, 0.02807216203941177,
+    0.04520353656360243, 0.0727895384398315, 0.11721022975334805, 0.18873918221350977,
+    0.3039195382313198, 0.4893900918477494, 0.7880462815669912, 1.2689610031679222,
+    2.0433597178569416, 3.2903445623126677, 5.298316906283707, 8.531678524172806,
+    13.738237958832638, 22.122162910704503, 35.622478902624444, 57.361525104486816,
+    92.36708571873865, 148.73521072935117, 239.5026619987486, 385.6620421163472,
+    621.0169418915616, 1000.0]
+  runtime.trial: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]

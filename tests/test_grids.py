@@ -13,7 +13,13 @@ from experiments.recording import partition_id, read_jsonl
 from experiments.seeding import seeds_for
 
 GRIDS = "config/grids"
-PARTITION_ONLY_GRIDS = ["rq1.yaml", "quantity_skew.yaml", "rq3_edge.yaml"]
+PARTITION_ONLY_GRIDS = [
+    "rq1.yaml",
+    "quantity_skew.yaml",
+    "rq3_edge.yaml",
+    "covtype_rq1.yaml",
+    "covtype_quantity_only.yaml",
+]
 
 
 def pid(config):
@@ -546,3 +552,39 @@ def test_the_400_epoch_centralized_grid_is_the_baseline_trained_longer_and_label
         "label"
     ]
     assert "post-hoc" in label and "2026-11-08" in label
+
+
+def test_covtype_rq1_is_rq1s_cases_and_alphas_on_covtype_at_k30_over_20_trials():
+    configs = expand(f"{GRIDS}/covtype_rq1.yaml", for_training=False)
+    cifar = expand(f"{GRIDS}/rq1.yaml", for_training=False)
+    assert len(configs) == len({pid(c) for c in configs}) == 3 * 10 * 20
+    assert {(c.dataset.name, c.partition.K) for c in configs} == {("covtype", 30)}
+    assert {c.runtime.trial for c in configs} == set(range(20))
+    assert {c.partition.alpha for c in configs} == {c.partition.alpha for c in cifar}
+    cases = lambda cs: {(c.partition.mode, c.partition.size_cap) for c in cs}  # noqa: E731
+    assert cases(configs) == cases(cifar)
+    assert all(c.partition.min_size_policy == 10 for c in configs)
+
+
+def test_covtype_rq1_reuses_covtype_rq2s_level_zero_natural_partitions():
+    rq1 = {pid(c) for c in expand(f"{GRIDS}/covtype_rq1.yaml", for_training=False)}
+    level0 = {
+        pid(c)
+        for c in expand(f"{GRIDS}/covtype_rq2.yaml", for_training=False)
+        if c.partition.target_label_hd == 0.0
+        and c.partition.mode is PartitionMode.NATURAL_PER_CLASS
+    }
+    assert len(level0) == 10 and level0 <= rq1
+
+
+def test_covtype_quantity_only_is_the_beta_curve_grid_on_covtype_at_k30_over_20_trials():
+    from partitioning.calibration import DEFAULT_BETAS
+
+    configs = expand(f"{GRIDS}/covtype_quantity_only.yaml", for_training=False)
+    assert len(configs) == len({pid(c) for c in configs}) == 30 * 20
+    assert all(c.partition.mode is PartitionMode.QUANTITY_ONLY for c in configs)
+    assert all(c.partition.alpha is None and c.partition.min_size_policy == 0 for c in configs)
+    assert all(c.partition.quantity_floor is None for c in configs)
+    assert sorted({c.partition.beta for c in configs}) == list(DEFAULT_BETAS)
+    assert {(c.dataset.name, c.partition.K) for c in configs} == {("covtype", 30)}
+    assert {c.runtime.trial for c in configs} == set(range(20))

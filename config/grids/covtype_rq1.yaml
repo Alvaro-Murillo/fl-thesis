@@ -1,0 +1,32 @@
+# RQ1 on Covtype - the quantity-skew byproduct of natural label partitioning, K = 30.
+#
+# Partition-only: no training. rq1.yaml's three cases and ten alphas on Covtype at the
+# headline client count, K = 30, over trials 0-19 (rq1.yaml has 3 trials on CIFAR-10; the
+# Covtype measurements of 2026-11-08 used 20, and these partitions record them through the
+# runner). The natural per-class cells at alpha 1000 and trials 0-4 are covtype_rq2.yaml's
+# level-0 partitions (the same partition ids), so run_grid reuses them.
+#
+#   python -m experiments.run_grid --grid config/grids/covtype_rq1.yaml
+#
+# Cells whose min-size redraw budget runs out are recorded as `infeasible_min_size`, as in
+# rq1.yaml.
+#
+# 3 cases x 10 alphas x 20 trials = 600 partitions.
+
+partition_only: true
+
+base: config/covtype.yaml
+
+constant:
+  partition.K: 30
+  partition.min_size_policy: 10
+  partition.max_redraws: 1000
+
+cases:
+  - {partition.mode: natural_per_class, partition.size_cap: none}
+  - {partition.mode: natural_per_class, partition.size_cap: niid_bench}
+  - {partition.mode: natural_per_client, partition.size_cap: none}
+
+sweep:
+  partition.alpha: [0.03, 0.1, 0.3, 0.5, 1.0, 5.0, 6.0, 10.0, 100.0, 1000.0]
+  runtime.trial: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
