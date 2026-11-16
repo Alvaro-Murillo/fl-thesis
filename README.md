@@ -1000,3 +1000,11 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
     partitions are identical (the cap does not bind in that draw) and so are their runs;
     the arms are kept apart. At RQ3 quantity level 0.70 FedAvg's best round is 3-4 at
     label level 0 and up to 18 and 38 at label levels 0.45 and 0.70
+- Results-section outputs regenerated at bda6539 on a clean tree (`--covtype-fedprox`;
+  `analysis/index.md`): the outputs print the dataset as Covertype (figure titles,
+  legends, axis labels, table headers and row labels, caption notes); `covtype` stays the
+  code and config identifier and the numbers.tex macro names keep `Covtype`. `--runslow`
+  on bda6539: 629 passed, 1 skipped, the config-hash pins included. covtype_rq1 and
+  covtype_quantity_only: all 1,200 partitions already recorded on a clean tree, none
+  regenerated. All 453 numbers equal the e0f8ed1 run's; reproduction check 43 of 43;
+  nothing pending
