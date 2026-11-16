@@ -89,7 +89,8 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   centralized.yaml, Covtype's covtype.yaml and covtype_centralized.yaml, and grids/
   (rq1.yaml, rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, quantity_skew.yaml,
   mu_tuning.yaml, rq2_class_order.yaml, centralized.yaml, covtype_rq2.yaml,
-  covtype_centralized.yaml, covtype_mu_tuning.yaml and covtype_centralized_steps.yaml)
+  covtype_centralized.yaml, covtype_mu_tuning.yaml, covtype_centralized_steps.yaml and
+  the partition-only covtype_rq1.yaml and covtype_quantity_only.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -105,6 +106,11 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   - rq2_class_order.py - RQ2's class-order check: per-class tables, the rule fixed
     before the per-class data it covers, and how concentrated each class is across
     clients
+  - paper_outputs.py - every table, figure and quoted number of the paper's results
+    from one command, reading the recorded runs and partitions only; paper_data.py
+    (inputs by grid and arm), paper_stats.py (mean and sample sd, paired differences,
+    RQ3 additivity and regression), paper_results.py (the results and tables),
+    paper_tables.py (CSV, LaTeX tabular and Markdown writers) and paper_figures.py
 
 ## Usage
 
@@ -162,6 +168,13 @@ Summarise completed runs across trials (all runs, or one grid's):
     python -m analysis.training_summary
     python -m analysis.training_summary --grid config/grids/rq3.yaml
     python -m analysis.training_summary --grid config/grids/centralized.yaml --prefix centralized
+
+Every table, figure and number of the paper's results section, on the reported trials
+(CIFAR-10 0, 1, 2, 5, 6; Covtype 0-4) and again on CIFAR-10 trials 0-2, with the
+three-trial reproduction check (`--help` for the trial sets, widths and paths; without
+`--covtype-fedprox` every Covtype FedProx cell reads "pending"):
+
+    python -m analysis.paper_outputs --covtype-fedprox
 
 Per-class test accuracy of recorded runs: each selected run is retrained and must
 reproduce its final accuracy and every round of its history.csv bit for bit, or the
@@ -427,6 +440,12 @@ at level 0. The Covtype grids, trained three shards at once:
   0-4. A post-hoc sensitivity check added after seeing the 10-epoch result; its
   `label` is written into every one of its runs.jsonl rows. Trained; its final
   accuracy is below the 10-epoch baseline's.
+- `covtype_rq1.yaml` (partition-only) - rq1.yaml's three cases and ten alphas on
+  Covtype at K = 30, trials 0-19: 600 partitions, one infeasible (natural uncapped,
+  alpha 0.03, trial 5). Its natural per-class cells at alpha 1000, trials 0-4, are
+  covtype_rq2.yaml's level-0 partitions.
+- `covtype_quantity_only.yaml` (partition-only) - quantity_only at the 30 curve betas,
+  K = 30, trials 0-19: 600 partitions, the partitions of the curve `b4684ba0de`.
 
 A cell is recalibrated only if its 20-seed mean misses its target by more than
 0.05. A single seed outside ±0.05 is listed and handled by the realized-HD
@@ -490,6 +509,17 @@ Everything lands under `results/` (gitignored), written atomically:
   `verdicts.csv` (one row per level: the rule on trials 0-2, then the trial 5-6
   overall differences, descriptive), `tables.md`, and `partitions.md` (concentration
   only)
+- `analysis/numbers.tex`, `numbers.csv` - one `\newcommand` per number the results text
+  quotes, and the same values with the output each comes from
+- `analysis/paper/` - `tables/` (each table as CSV at full precision with n and the trial
+  set, a plain LaTeX tabular, Markdown, and its caption notes), `figures/` (PDF, PNG,
+  a CSV of exactly the plotted numbers, notes with a proposed caption; `figures/single/`
+  holds each panel of the multi-panel figures on its own), `reproduction_check.txt`,
+  `checks.txt`, `inputs_manifest.csv` (every run and partition read, with its commit),
+  the comparison of the two CIFAR-10 trial sets, and `trials_0_1_2/` (the same outputs on
+  CIFAR-10 trials 0-2)
+- `analysis/index.md` - every file of the paper outputs, with the command and commit that
+  wrote it
 
 Partitions are addressed by the fields that determine the split, so training
 knobs never invalidate a cached partition, and FedAvg and FedProx at the same
@@ -516,6 +546,11 @@ across 20 partitions (at quantity-HD 0.44-0.57), and with 3 trials the curve
 was off by up to 0.065 from a 1000-seed mean. With 20 trials it is off by at
 most 0.022, and by at most 0.004 for targets 0.1-0.6.
 Its trials 0-19 are the partitions of that analysis script's 20-seed sweep.
+
+`b4684ba0de` is the Covtype K = 30 beta curve (20 trials, floor 22): quantity-HD
+0.011-0.879. The paper outputs read the beta of deliberate quantity skew equal to
+natural label skew's incidental quantity-HD off it, as they read 8f995f9546 for
+CIFAR-10.
 
 ## Conventions
 
@@ -942,3 +977,26 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
   - The best epoch (0.958) is chosen on the test set, as Covtype has no validation
     split here, so it is an optimistic figure and is not reported as a baseline
   - Measured: 99.6-104.4 min per run three at once, 83.9-85.9 min two at once
+- Results-section outputs (`analysis.paper_outputs`, aa6bb84 and e0f8ed1; run at e0f8ed1
+  on a clean tree, Covtype FedProx included, `analysis/index.md` lists every file).
+  Every number is read from the recorded runs and partitions: 390 runs and 195
+  partitions, all recorded on a clean tree; nothing is pending
+  - Reproduction check on CIFAR-10 trials 0-2: all 43 values of the recorded three-trial
+    analysis match at their printed precision. The RQ3 FedAvg interaction sd at
+    0.70 x 0.70 is checked at 4 decimals (0.0245, as recorded); at 3 decimals the
+    recorded 0.0245 had been rounded a second time to 0.025
+  - From 3 to 5 CIFAR-10 trials two paired comparisons change sign, both FedProx: the RQ3
+    interaction at 0.25 x 0.70 (-0.0039 to +0.0011 +/- 0.0101) and the RQ2 gap pure -
+    uncapped at 0.45 (+0.0024 to -0.0003 +/- 0.0089). No FedAvg gap or interaction does
+  - `covtype_rq1.yaml` and `covtype_quantity_only.yaml` generated: first at aa6bb84 with
+    three uncommitted files in the tree (the README, covtype_centralized_steps.yaml and
+    tests/test_grids.py, which the partitioner does not read), so recorded git_dirty;
+    re-recorded at e0f8ed1 on a clean tree through the same `generate_partition` call,
+    each with client arrays and metrics identical to its first record. The 600
+    covtype_rq1 partitions equal the Covtype measurements of 2026-11-08
+  - Covtype quantity_only curve `b4684ba0de` (K = 30, 20 trials, at aa6bb84 on a clean
+    tree)
+  - Measured while reading: at Covtype level 0, trial 1, the capped and uncapped
+    partitions are identical (the cap does not bind in that draw) and so are their runs;
+    the arms are kept apart. At RQ3 quantity level 0.70 FedAvg's best round is 3-4 at
+    label level 0 and up to 18 and 38 at label levels 0.45 and 0.70
