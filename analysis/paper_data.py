@@ -55,7 +55,8 @@ CIFAR_TRIALS = (0, 1, 2, 5, 6)
 COVTYPE_TRIALS = (0, 1, 2, 3, 4)
 CIFAR_TUNING_TRIALS = (3, 4)
 COVTYPE_TUNING_TRIALS = (5, 6)
-DATASET_NAMES = {"cifar10": "CIFAR-10", "covtype": "Covtype"}
+# Printed names; `covtype` stays the code and config identifier (and in numbers.tex macro names).
+DATASET_NAMES = {"cifar10": "CIFAR-10", "covtype": "Covertype"}
 
 # The trained grids by dataset; the centralized 400-epoch grid is the post-hoc check.
 TRAINED_GRIDS = {

@@ -276,7 +276,7 @@ def rq1_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
     status = bundle.rq1_status.get("covtype")
     notes = []
     if status == "pending":
-        axes[1].text(0.5, 0.5, "Covtype: pending", ha="center", transform=axes[1].transAxes)
+        axes[1].text(0.5, 0.5, "Covertype: pending", ha="center", transform=axes[1].transAxes)
     else:
         _rq1_panel(
             axes[1],
@@ -287,7 +287,7 @@ def rq1_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
             "b",
         )
     _panel_label(
-        axes[1], "(b) Covtype, K = 30" + (" (PROVISIONAL)" if status == "provisional" else "")
+        axes[1], "(b) Covertype, K = 30" + (" (PROVISIONAL)" if status == "provisional" else "")
     )
     legend_below(fig, axes, ncol=2)
     data = pd.DataFrame(records)
@@ -298,24 +298,24 @@ def rq1_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
         "(quantity-only partitions over the beta sweep), mean ± sd of its quantity-HD against its "
         "own incidental label-HD. (a) CIFAR-10: dotted lines, the source paper's QHD 0.10 and 0.17 "
         "on our scale (0.397, 0.773); thin lines, the RQ3 quantity levels 0.35 and 0.70; dash-dot, "
-        "the label-HD ceiling 0.827 (a client holding one class). (b) Covtype: no ceiling line, "
+        "the label-HD ceiling 0.827 (a client holding one class). (b) Covertype: no ceiling line, "
         "since with imbalanced classes the HD of a one-class client depends on the class.",
-        "n per point: CIFAR-10 3 trials (config/grids/rq1.yaml, trials 0-2); Covtype 20 trials "
+        "n per point: CIFAR-10 3 trials (config/grids/rq1.yaml, trials 0-2); Covertype 20 trials "
         "(config/grids/covtype_rq1.yaml, trials 0-19). The quantity-only bands: 20 trials each, "
-        "calibration/8f995f9546.json (CIFAR-10) and calibration/b4684ba0de.json (Covtype).",
+        "calibration/8f995f9546.json (CIFAR-10) and calibration/b4684ba0de.json (Covertype).",
         "Grey band: drawn as the quantity-only locus (mean ± sd of quantity-HD at each beta, "
         "placed at its mean incidental label-HD). Its vertical extent is the quantity-only range at "
-        "K = 30 (CIFAR-10 0.011 to 0.826, Covtype 0.011 to 0.879).",
+        "K = 30 (CIFAR-10 0.011 to 0.826, Covertype 0.011 to 0.879).",
     ]
     if status == "provisional":
         notes.append(
-            "PROVISIONAL: panel (b) uses the Covtype partition measurements of 2026-11-08 (session "
+            "PROVISIONAL: panel (b) uses the Covertype partition measurements of 2026-11-08 (session "
             "folder, uncommitted tree), not partitions recorded through the runner; replaced by "
             "config/grids/covtype_rq1.yaml once generated."
         )
     if _quantity_locus("covtype") is None:
         notes.append(
-            "Panel (b): the quantity-only band is absent: no Covtype quantity-only curve yet (pending)."
+            "Panel (b): the quantity-only band is absent: no Covertype quantity-only curve yet (pending)."
         )
     return save(fig, out, "rq1_incidental_quantity_k30", data, notes)
 
@@ -501,7 +501,7 @@ def rq2_figure(bundle: Bundle, summary, diffs045: dict, out: Path, widths: Width
         "b",
         "final test accuracy",
     )
-    _panel_label(axes[1], "(b) Covtype")
+    _panel_label(axes[1], "(b) Covertype")
     per_class_panel(axes[2], diffs045, records, "c", 0.45)
     _panel_label(axes[2], "(c) CIFAR-10, label-HD 0.45, FedAvg")
     handles = [
@@ -538,13 +538,13 @@ def rq2_figure(bundle: Bundle, summary, diffs045: dict, out: Path, widths: Width
         "where both natural lines start. (c) Per-class final accuracy of the capped arm minus the "
         "uncapped arm at label-HD 0.45, FedAvg, with the classes split in index order and in "
         "reversed order; mean ± sd of the per-trial differences.",
-        f"n: CIFAR-10 {n} trials {trial_set_label(bundle.trials('cifar10'))}; Covtype "
+        f"n: CIFAR-10 {n} trials {trial_set_label(bundle.trials('cifar10'))}; Covertype "
         f"{len(bundle.trials('covtype'))} trials {trial_set_label(bundle.trials('covtype'))}; panel "
         f"(c) {len(diffs045['trials'])} trials {trial_set_label(diffs045['trials'])} (the class-order "
         "grid's trials).",
     ]
     if bundle.is_pending("covtype", "fedprox"):
-        notes.append("Panel (b): Covtype FedProx lines absent: pending (runs still training).")
+        notes.append("Panel (b): Covertype FedProx lines absent: pending (runs still training).")
     return save(fig, out, "rq2_accuracy_vs_label_hd", pd.DataFrame(records), notes)
 
 
@@ -559,10 +559,10 @@ def rq2_balanced_figure(bundle: Bundle, summary, out: Path, widths: Widths) -> l
         "a",
         "final balanced accuracy (ours)",
     )
-    _panel_label(ax, "Covtype, balanced accuracy (ours)")
+    _panel_label(ax, "Covertype, balanced accuracy (ours)")
     legend_below(fig, ax, ncol=2)
     notes = [
-        "Proposed caption: Covtype, final balanced accuracy (mean per-class recall; our addition, "
+        "Proposed caption: Covertype, final balanced accuracy (mean per-class recall; our addition, "
         "not the source paper's metric) against mean realized label-HD, mean ± sd over "
         f"{len(bundle.trials('covtype'))} trials; solid FedAvg, dashed FedProx.",
     ]
@@ -802,7 +802,7 @@ def single_panel_figures(bundle: Bundle, summary, diffs: dict, out: Path, widths
         panels.append(
             (
                 "rq1_incidental_quantity_k30_covtype",
-                "Covtype, K = 30" + (" (PROVISIONAL)" if covtype_status == "provisional" else ""),
+                "Covertype, K = 30" + (" (PROVISIONAL)" if covtype_status == "provisional" else ""),
                 lambda ax, r: _rq1_panel(
                     ax,
                     _rq1_points(bundle, "covtype", 30),

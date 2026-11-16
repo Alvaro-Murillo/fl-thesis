@@ -143,7 +143,7 @@ class Bundle:
         trials = ", ".join(str(t) for t, _ in same)
         runs = "and so are its FedAvg runs" if all(h for _, h in same) else "but its runs differ"
         return (
-            f"Covtype level 0, trial {trials}: the cap does not bind in that draw, so the capped "
+            f"Covertype level 0, trial {trials}: the cap does not bind in that draw, so the capped "
             f"and uncapped partitions are identical client by client, {runs}; the arms are kept "
             "apart as at every other trial."
         )
@@ -401,7 +401,9 @@ def setup_table(bundle: Bundle) -> Table:
         Col(
             "cifar10", "CIFAR-10", "text", ("cifar10",), align="l", ref=("both",), ref_group="both"
         ),
-        Col("covtype", "Covtype", "text", ("covtype",), align="l", ref=("both",), ref_group="both"),
+        Col(
+            "covtype", "Covertype", "text", ("covtype",), align="l", ref=("both",), ref_group="both"
+        ),
     ]
     notes = [
         "Every value is read from the grid and config files (config/grids/rq2.yaml, rq3.yaml, "
@@ -413,7 +415,7 @@ def setup_table(bundle: Bundle) -> Table:
         "levels are target quantity-HD values (HD to uniform client sizes). Realized values are "
         "reported in the results tables.",
         "mu was tuned once per dataset on trials no reported number uses (CIFAR-10 trials 3-4, "
-        "Covtype trials 5-6).",
+        "Covertype trials 5-6).",
     ]
     return Table("setup", df, cols, notes, tabcolsep_pt=4, trial_set=_trial_sets(bundle))
 
@@ -553,7 +555,7 @@ def main_results_body(bundle: Bundle, summary: pd.DataFrame) -> Table:
         "Arms: uncapped and capped are the natural label-skew arms (Dirichlet per class) without and "
         "with the per-client size cap; pure holds client sizes equal. On CIFAR-10 at level 0 the two "
         "natural arms are the same partition and the same runs (checked trial by trial), so they "
-        "are one row, natural, counted once. On Covtype they differ at level 0 and are both shown.",
+        "are one row, natural, counted once. On Covertype they differ at level 0 and are both shown.",
         "Centralized: the pooled training set, 10 epochs, one run per trial; its value spans the "
         "algorithm columns.",
         "FedAvg RTA is in the appendix tables (dropped here for width).",
@@ -561,7 +563,7 @@ def main_results_body(bundle: Bundle, summary: pd.DataFrame) -> Table:
     if bundle.covtype_level0_note():
         notes.append(bundle.covtype_level0_note())
     if bundle.is_pending("covtype", "fedprox"):
-        notes.append("Covtype FedProx: pending (runs still training).")
+        notes.append("Covertype FedProx: pending (runs still training).")
     return Table(
         "main_results_body", df, cols, notes, tabcolsep_pt=4, trial_set=_trial_sets(bundle)
     )
@@ -651,7 +653,9 @@ def main_results_full(bundle: Bundle, summary: pd.DataFrame) -> Table:
     for L in rq2_levels(bundle, "covtype"):
         for arm in rq2_arms("covtype", L):
             rows.append(
-                cell_row("Covtype, RQ2", "covtype", "covtype_rq2", arm, L, None, f"{arm}, {L:.2f}")
+                cell_row(
+                    "Covertype, RQ2", "covtype", "covtype_rq2", arm, L, None, f"{arm}, {L:.2f}"
+                )
             )
     rows.append(
         _reference_row(
@@ -660,7 +664,7 @@ def main_results_full(bundle: Bundle, summary: pd.DataFrame) -> Table:
             "covtype_centralized",
             "centralized, 10 epochs",
             metrics,
-            "Covtype, centralized",
+            "Covertype, centralized",
         )
         | {"dataset": "covtype"}
     )
@@ -671,7 +675,7 @@ def main_results_full(bundle: Bundle, summary: pd.DataFrame) -> Table:
             "covtype_centralized_steps",
             "centralized, 400 epochs (post-hoc sensitivity)",
             metrics,
-            "Covtype, centralized",
+            "Covertype, centralized",
             post_hoc=True,
         )
         | {"dataset": "covtype"}
@@ -716,20 +720,20 @@ def main_results_full(bundle: Bundle, summary: pd.DataFrame) -> Table:
         "label-HD, quantity-HD and size-weighted label-HD: mean realized values over the cell's "
         "partitions. Size-weighted label-HD weights each client's HD to the global label "
         "distribution by its size; label-HD is the unweighted mean over clients.",
-        "Balanced accuracy (mean per-class recall) is our addition, Covtype only; accuracy is the "
+        "Balanced accuracy (mean per-class recall) is our addition, Covertype only; accuracy is the "
         "source paper's metric.",
         "CIFAR-10 level 0: the two natural arms are one partition, one row (natural). Class-order "
         "check: the capped arm with the classes split in reversed order, FedAvg only.",
         "Centralized rows: the pooled training set, one run per trial; values span the algorithm "
-        "columns; the 400-epoch Covtype row is a post-hoc sensitivity check added after seeing the "
+        "columns; the 400-epoch Covertype row is a post-hoc sensitivity check added after seeing the "
         "10-epoch result, not the pre-specified baseline.",
     ]
     if bundle.covtype_level0_note():
         notes.append(bundle.covtype_level0_note())
     if bundle.is_pending("covtype", "fedprox"):
-        notes.append("Covtype FedProx: pending (runs still training).")
+        notes.append("Covertype FedProx: pending (runs still training).")
     if any(g == "covtype_centralized_steps" for g, *_ in bundle.pending_runs):
-        notes.append("Covtype centralized 400 epochs: pending (not trained; grid blocked).")
+        notes.append("Covertype centralized 400 epochs: pending (not trained; grid blocked).")
     split = (
         "The full results are one dataframe, written as two LaTeX fragments for width: accuracy "
         "(main_results_full_accuracy) and RTA with balanced accuracy (main_results_full_rta_balanced); "
@@ -848,7 +852,7 @@ def rq2_gaps_table(bundle: Bundle, gaps: pd.DataFrame) -> Table:
         )
     if bundle.is_pending("covtype", "fedprox"):
         notes.append(
-            "Covtype FedProx rows: gaps pending (runs still training); HD values are the partitions'."
+            "Covertype FedProx rows: gaps pending (runs still training); HD values are the partitions'."
         )
     return Table("rq2_paired_gaps", gaps, cols, notes, trial_set=_trial_sets(bundle))
 
@@ -870,7 +874,7 @@ def rq2_rta_table(bundle: Bundle, gaps: pd.DataFrame) -> Table:
         + ". A positive gap: arm a takes more rounds. '=' counts trials with equal RTA.",
     ]
     if bundle.is_pending("covtype", "fedprox"):
-        notes.append("Covtype FedProx rows: pending (runs still training).")
+        notes.append("Covertype FedProx rows: pending (runs still training).")
     return Table("rq2_rta_paired", gaps, cols, notes, trial_set=_trial_sets(bundle))
 
 
@@ -1182,7 +1186,7 @@ def mu_sweep(bundle: Bundle) -> tuple[Table, dict]:
     ]
     notes = [
         "Tuning runs, not reported trials: CIFAR-10 at trials 3-4 (combined, label-HD 0.45 × "
-        "quantity-HD 0.35), Covtype at trials 5-6 (pure, label-HD 0.35). These are the only outputs "
+        "quantity-HD 0.35), Covertype at trials 5-6 (pure, label-HD 0.35). These are the only outputs "
         "that show those trials; no reported number uses them.",
         "Rule fixed before the runs: the mu with the highest mean final accuracy over the two trials "
         "(FedAvg as mu = 0); of those within 0.01 of the top mean, the smallest.",
@@ -1248,7 +1252,7 @@ def rq1_summary_table(bundle: Bundle, s: pd.DataFrame) -> Table:
     ]
     notes = [
         "RQ1: natural label-skew partitions (no training). Mean ± sample sd over the generated "
-        "partitions of each cell; CIFAR-10 3 trials (0-2, config/grids/rq1.yaml), Covtype 20 trials "
+        "partitions of each cell; CIFAR-10 3 trials (0-2, config/grids/rq1.yaml), Covertype 20 trials "
         "(0-19). Client sizes are means over trials of each partition's max and mean client size.",
         "Generated: partitions drawn of those attempted; the others ran out of their 1000-redraw "
         "min-size budget (min_size 10) and have no partition.",
@@ -1256,7 +1260,7 @@ def rq1_summary_table(bundle: Bundle, s: pd.DataFrame) -> Table:
     ]
     if bundle.rq1_status.get("covtype") == "provisional":
         notes.append(
-            "Covtype rows PROVISIONAL: partition measurements of 2026-11-08 built through the "
+            "Covertype rows PROVISIONAL: partition measurements of 2026-11-08 built through the "
             "partitioner from configs but not recorded through the runner (uncommitted tree); "
             "replaced by config/grids/covtype_rq1.yaml once generated."
         )
@@ -1312,17 +1316,17 @@ def rq1_max_table(bundle: Bundle, m: pd.DataFrame) -> Table:
     ]
     notes = [
         "K = 30. The largest mean incidental quantity-HD over the RQ1 alpha values, per variant; "
-        "CIFAR-10 3 trials, Covtype 20.",
+        "CIFAR-10 3 trials, Covertype 20.",
         "quantity-only β: the β of deliberate quantity skew (quantity-only partitions) whose mean "
         "quantity-HD equals that value, by `partitioning.calibration.beta_for_target` (log-linear "
         "interpolation, no refinement) on the 20-trial curves "
         f"calibration/{CIFAR_QUANTITY_CURVE}.json (CIFAR-10) and "
-        f"calibration/{COVTYPE_QUANTITY_CURVE}.json (Covtype).",
+        f"calibration/{COVTYPE_QUANTITY_CURVE}.json (Covertype).",
     ]
     if COVTYPE_QUANTITY_CURVE is None:
-        notes.append("Covtype β: pending; no Covtype quantity-only curve exists yet.")
+        notes.append("Covertype β: pending; no Covertype quantity-only curve exists yet.")
     if bundle.rq1_status.get("covtype") == "provisional":
-        notes.append("Covtype rows PROVISIONAL (see the RQ1 summary table).")
+        notes.append("Covertype rows PROVISIONAL (see the RQ1 summary table).")
     return Table(
         "rq1_max_incidental_quantity", m, cols, notes, trial_set="cifar10 {0,1,2}; covtype {0-19}"
     )
@@ -1364,7 +1368,7 @@ def rq1_matched_table(bundle: Bundle, w: pd.DataFrame) -> Table:
         Col("arm", "Variant", "text", ("arm",), align="l"),
         Col("lhd", "label-HD", "num", ("label_hd",), decimals=2),
         Col("c", "CIFAR-10\nquantity-HD", "num", ("cifar10",), decimals=HD),
-        Col("v", "Covtype\nquantity-HD", "num", ("covtype",), decimals=HD),
+        Col("v", "Covertype\nquantity-HD", "num", ("covtype",), decimals=HD),
     ]
     notes = [
         "Incidental quantity-HD at matched label-HD, K = 30: linear interpolation of the mean "
@@ -1372,7 +1376,7 @@ def rq1_matched_table(bundle: Bundle, w: pd.DataFrame) -> Table:
         "'--' where the variant's label-HD range does not reach the value.",
     ]
     if bundle.rq1_status.get("covtype") == "provisional":
-        notes.append("Covtype column PROVISIONAL.")
+        notes.append("Covertype column PROVISIONAL.")
     return Table(
         "rq1_matched_label_hd", w, cols, notes, trial_set="cifar10 {0,1,2}; covtype {0-19}"
     )
@@ -1397,7 +1401,7 @@ def rq1_pairwise_table(bundle: Bundle, s: pd.DataFrame) -> Table:
         "closed-form conversion.",
     ]
     if bundle.rq1_status.get("covtype") == "provisional":
-        notes.append("Covtype rows PROVISIONAL.")
+        notes.append("Covertype rows PROVISIONAL.")
     return Table(
         "rq1_pairwise_translation", t, cols, notes, trial_set="cifar10 {0,1,2}; covtype {0-19}"
     )
@@ -1419,7 +1423,7 @@ def rq1_infeasible_table(bundle: Bundle) -> Table:
         "status infeasible_min_size and no partition; they are counted, not dropped.",
     ]
     if bundle.rq1_status.get("covtype") == "provisional":
-        notes.append("Covtype rows PROVISIONAL.")
+        notes.append("Covertype rows PROVISIONAL.")
     return Table("rq1_infeasible", r, cols, notes, trial_set="cifar10 {0,1,2}; covtype {0-19}")
 
 
