@@ -136,6 +136,26 @@ def _panel_label(ax, text):
     ax.set_title(text, loc="left", fontsize=FONT_SIZE)
 
 
+def legend_below(fig, axes, ncol: int = 2, handles=None):
+    """One legend under the plotting area, so it never covers data: the axes' own entries,
+    each label once, unless `handles` is given."""
+    if handles is None:
+        seen, handles = set(), []
+        for ax in np.atleast_1d(axes):
+            for h, label in zip(*ax.get_legend_handles_labels()):
+                if label not in seen and not label.startswith("_"):
+                    seen.add(label)
+                    handles.append(h)
+    return fig.legend(
+        handles=handles,
+        loc="outside lower center",
+        ncol=ncol,
+        fontsize=FONT_SIZE - 1,
+        handlelength=2.0,
+        columnspacing=1.2,
+    )
+
+
 # ---------------------------------------------------------------- RQ1 incidental quantity skew
 def _rq1_points(bundle: Bundle, dataset: str, K: int) -> pd.DataFrame:
     from analysis.paper_results import rq1_summary
@@ -246,7 +266,7 @@ def _rq1_panel(ax, points: pd.DataFrame, locus, cifar_refs: bool, records: list,
 def rq1_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
     plt = pyplot()
     fig, axes = plt.subplots(
-        2, 1, figsize=(widths.column, widths.column * 1.35), layout="constrained"
+        2, 1, figsize=(widths.column, widths.column * 1.6), layout="constrained"
     )
     records = []
     _rq1_panel(
@@ -269,17 +289,7 @@ def rq1_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
     _panel_label(
         axes[1], "(b) Covtype, K = 30" + (" (PROVISIONAL)" if status == "provisional" else "")
     )
-    legend = axes[0].legend(
-        loc="upper left",
-        bbox_to_anchor=(0.27, 1.0),
-        fontsize=FONT_SIZE - 1,
-        handlelength=1.6,
-        borderaxespad=0.3,
-        frameon=True,
-        framealpha=1.0,
-        edgecolor="none",
-    )
-    legend.set_zorder(10)
+    legend_below(fig, axes, ncol=2)
     data = pd.DataFrame(records)
     notes += [
         "Proposed caption: Incidental quantity skew of natural label-skew partitioning, K = 30. Each "
@@ -290,11 +300,12 @@ def rq1_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
         "on our scale (0.397, 0.773); thin lines, the RQ3 quantity levels 0.35 and 0.70; dash-dot, "
         "the label-HD ceiling 0.827 (a client holding one class). (b) Covtype: no ceiling line, "
         "since with imbalanced classes the HD of a one-class client depends on the class.",
-        "n per point: CIFAR-10 3 trials (config/grids/rq1.yaml, trials 0-2; the quantity-only band "
-        "20 trials, calibration/8f995f9546.json); Covtype 20 trials.",
+        "n per point: CIFAR-10 3 trials (config/grids/rq1.yaml, trials 0-2); Covtype 20 trials "
+        "(config/grids/covtype_rq1.yaml, trials 0-19). The quantity-only bands: 20 trials each, "
+        "calibration/8f995f9546.json (CIFAR-10) and calibration/b4684ba0de.json (Covtype).",
         "Grey band: drawn as the quantity-only locus (mean ± sd of quantity-HD at each beta, "
         "placed at its mean incidental label-HD). Its vertical extent is the quantity-only range at "
-        "K = 30 (CIFAR-10 0.011 to 0.826).",
+        "K = 30 (CIFAR-10 0.011 to 0.826, Covtype 0.011 to 0.879).",
     ]
     if status == "provisional":
         notes.append(
@@ -312,7 +323,7 @@ def rq1_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
 def rq1_k_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
     plt = pyplot()
     fig, axes = plt.subplots(
-        2, 1, figsize=(widths.column, widths.column * 1.35), layout="constrained"
+        2, 1, figsize=(widths.column, widths.column * 1.5), layout="constrained"
     )
     records = []
     for ax, K, panel in zip(axes, (10, 100), "ab"):
@@ -338,7 +349,7 @@ def rq1_k_figure(bundle: Bundle, out: Path, widths: Widths) -> list[Path]:
                     "n": p["n_infeasible"],
                 }
             )
-    axes[1].legend(loc="center left", fontsize=FONT_SIZE - 1)
+    legend_below(fig, axes, ncol=3)
     notes = [
         "Proposed caption: As the RQ1 figure, CIFAR-10 at K = 10 and K = 100; 3 trials per point. "
         "At K = 100, alpha = 0.03, the natural per-class variants (uncapped and capped) exhaust their "
@@ -415,6 +426,7 @@ def _rq2_panel(ax, series: dict, records: list, panel: str, ylabel: str):
                 mec="black",
                 ms=5,
                 zorder=5,
+                label="natural, level 0 (uncapped = capped)",
             )
             shared_drawn = True
         for _, p in pts.iterrows():
@@ -538,7 +550,7 @@ def rq2_figure(bundle: Bundle, summary, diffs045: dict, out: Path, widths: Width
 
 def rq2_balanced_figure(bundle: Bundle, summary, out: Path, widths: Widths) -> list[Path]:
     plt = pyplot()
-    fig, ax = plt.subplots(figsize=(widths.column, widths.column * 0.75), layout="constrained")
+    fig, ax = plt.subplots(figsize=(widths.column, widths.column * 1.0), layout="constrained")
     records = []
     _rq2_panel(
         ax,
@@ -547,7 +559,8 @@ def rq2_balanced_figure(bundle: Bundle, summary, out: Path, widths: Widths) -> l
         "a",
         "final balanced accuracy (ours)",
     )
-    ax.legend(loc="lower left", fontsize=FONT_SIZE - 1)
+    _panel_label(ax, "Covtype, balanced accuracy (ours)")
+    legend_below(fig, ax, ncol=2)
     notes = [
         "Proposed caption: Covtype, final balanced accuracy (mean per-class recall; our addition, "
         "not the source paper's metric) against mean realized label-HD, mean ± sd over "
@@ -565,6 +578,7 @@ def per_class_figure(
     fig, ax = plt.subplots(figsize=(widths.column, widths.column * 0.85), layout="constrained")
     records = []
     per_class_panel(ax, diffs, records, "a", level)
+    _panel_label(ax, f"CIFAR-10, label-HD {level:.2f}, FedAvg")
     fig.legend(loc="outside lower center", ncol=1, fontsize=FONT_SIZE - 1)
     notes = [
         f"Proposed caption: As panel (c) of the RQ2 figure, at label-HD {level:.2f}: per-class final "
@@ -579,7 +593,7 @@ def per_class_figure(
 def _heat_cmap():
     from matplotlib.colors import LinearSegmentedColormap
 
-    return LinearSegmentedColormap.from_list("white_sky", ["#FFFFFF", OKABE_ITO["sky"]])
+    return LinearSegmentedColormap.from_list("white_sky", ["#EEF6FC", OKABE_ITO["sky"]])
 
 
 def rq3_heatmap(
@@ -596,7 +610,8 @@ def rq3_heatmap(
     decimals = 4 if metric == "final_acc" else 1
     values = np.full((len(Ls), len(Qs)), np.nan)
     records = []
-    fig, ax = plt.subplots(figsize=(widths.column, widths.column * 1.0), layout="constrained")
+    height = widths.column * (1.35 if metric == "rta" else 1.2)
+    fig, ax = plt.subplots(figsize=(widths.column, height), layout="constrained")
     for i, L in enumerate(Ls):
         for j, Q in enumerate(Qs):
             c = _cell(
@@ -631,7 +646,11 @@ def rq3_heatmap(
                 text += f"\nbest round {c['best_round_mean']:.1f}"
             if len(hit):
                 h = hit.iloc[0]
-                text += f"\nI {h['interaction_mean']:+.{3 if metric == 'final_acc' else 1}f}, {int(h['n_negative'])}/{int(h['n'])} neg."
+                places = 3 if metric == "final_acc" else 1
+                text += (
+                    f"\ninteraction {h['interaction_mean']:+.{places}f}"
+                    f"\n{int(h['n_negative'])} of {int(h['n'])} trials < 0"
+                )
                 rec.update(
                     {
                         "interaction_mean": h["interaction_mean"],
@@ -671,9 +690,18 @@ def rq3_heatmap(
     notes = [
         f"Proposed caption: CIFAR-10, RQ3, {ALGORITHM_NAMES[algorithm]}: {what} by label level "
         "(rows) and quantity level (columns), the grid's target levels; mean ± sd over "
-        f"{n} trials {trial_set_label(bundle.trials('cifar10'))}. Non-edge cells also show the "
-        "interaction I = Δcombined − Δlabel-only − Δquantity-only (mean over trials, against each "
-        "trial's (0, 0) corner) and the number of trials in which it is negative. Colour: the cell mean.",
+        f"{n} trials {trial_set_label(bundle.trials('cifar10'))}. Cells with both skews also show "
+        "the interaction, Δcombined − Δlabel-only − Δquantity-only, where each Δ is the change "
+        "from that trial's (0, 0) corner: the cell's own, the cell at the same label level and "
+        "quantity 0, and the cell at label 0 and the same quantity level (mean over trials), and "
+        "in how many trials it is below zero. Colour: the cell mean."
+        + (
+            " In accuracy a negative interaction means the two skews together cost more than the "
+            "sum of their separate costs."
+            if metric == "final_acc"
+            else " In RTA the interaction is in rounds; a negative value means the cell reaches 90% "
+            "of its own best in fewer rounds than the separate effects add up to."
+        ),
         "Realized mean label-HD and quantity-HD per cell are in this file's CSV.",
     ]
     if metric == "rta":
@@ -695,7 +723,7 @@ def rq3_heatmap(
 def regression_residuals(bundle: Bundle, fits: dict, out: Path, widths: Widths) -> list[Path]:
     plt = pyplot()
     fig, axes = plt.subplots(
-        1, 2, figsize=(widths.column, widths.column * 0.6), layout="constrained", sharey=True
+        1, 2, figsize=(widths.column, widths.column * 0.75), layout="constrained", sharey=True
     )
     records = []
     for ax, algorithm in zip(axes, ALGORITHMS):
@@ -711,7 +739,7 @@ def regression_residuals(bundle: Bundle, fits: dict, out: Path, widths: Widths) 
                 ms=2.5,
                 mfc="none",
                 mew=0.6,
-                label=f"Q {q:g}",
+                label=f"quantity level {q:.2f}" if q else "quantity level 0",
             )
         ax.axhline(0, color="black", lw=0.5)
         ax.set_xlabel("fitted accuracy")
@@ -731,10 +759,152 @@ def regression_residuals(bundle: Bundle, fits: dict, out: Path, widths: Widths) 
                 }
             )
     axes[0].set_ylabel("residual")
-    axes[1].legend(loc="lower right", fontsize=FONT_SIZE - 1, handletextpad=0.2)
+    legend_below(fig, axes, ncol=3)
     notes = [
         "Proposed caption: RQ3 regression acc ~ (L + L²) × C(quantity level) + C(trial), residuals "
         f"against fitted values, one point per run ({len(bundle.trials('cifar10')) * 12} per "
         "algorithm), marked by quantity level. Descriptive.",
     ]
     return save(fig, out, "rq3_regression_residuals", pd.DataFrame(records), notes)
+
+
+# ---------------------------------------------------------------- one panel per file
+def _single(out: Path, widths: Widths, name: str, title: str, draw, notes, ncol=2, height=1.0):
+    """One panel in its own figure, column width, its legend under the plot."""
+    plt = pyplot()
+    fig, ax = plt.subplots(figsize=(widths.column, widths.column * height), layout="constrained")
+    records = []
+    draw(ax, records)
+    _panel_label(ax, title)
+    if ax.get_legend_handles_labels()[0]:
+        legend_below(fig, ax, ncol=ncol)
+    return save(fig, out, name, pd.DataFrame(records), notes)
+
+
+def single_panel_figures(bundle: Bundle, summary, diffs: dict, out: Path, widths: Widths):
+    """Every panel of the multi-panel figures as its own figure, each with its own legend."""
+    see = "One panel of {}; see that figure's notes for the caption and n."
+    written = []
+    covtype_status = bundle.rq1_status.get("covtype")
+    panels = [
+        (
+            "rq1_incidental_quantity_k30_cifar10",
+            "CIFAR-10, K = 30",
+            lambda ax, r: _rq1_panel(
+                ax, _rq1_points(bundle, "cifar10", 30), _quantity_locus("cifar10"), True, r, "a"
+            ),
+            "rq1_incidental_quantity_k30",
+            2,
+            1.3,
+        ),
+    ]
+    if covtype_status != "pending":
+        panels.append(
+            (
+                "rq1_incidental_quantity_k30_covtype",
+                "Covtype, K = 30" + (" (PROVISIONAL)" if covtype_status == "provisional" else ""),
+                lambda ax, r: _rq1_panel(
+                    ax,
+                    _rq1_points(bundle, "covtype", 30),
+                    _quantity_locus("covtype"),
+                    False,
+                    r,
+                    "b",
+                ),
+                "rq1_incidental_quantity_k30",
+                2,
+                1.15,
+            )
+        )
+    for K, panel in ((10, "a"), (100, "b")):
+        panels.append(
+            (
+                f"rq1_incidental_quantity_cifar_k{K}",
+                f"CIFAR-10, K = {K}",
+                lambda ax, r, K=K, panel=panel: _rq1_k_panel(bundle, ax, r, K, panel),
+                "rq1_incidental_quantity_cifar_k10_k100",
+                3,
+                1.1,
+            )
+        )
+    for dataset, panel in (("cifar10", "a"), ("covtype", "b")):
+        panels.append(
+            (
+                f"rq2_accuracy_vs_label_hd_{dataset}",
+                DATASET_NAMES[dataset],
+                lambda ax, r, d=dataset, p=panel: _rq2_panel(
+                    ax, _rq2_series(bundle, summary, d, "final_acc"), r, p, "final test accuracy"
+                ),
+                "rq2_accuracy_vs_label_hd",
+                2,
+                1.25,
+            )
+        )
+    panels.append(
+        (
+            "rq2_per_class_difference_045",
+            "CIFAR-10, label-HD 0.45, FedAvg",
+            lambda ax, r: per_class_panel(ax, diffs[0.45], r, "c", 0.45),
+            "rq2_accuracy_vs_label_hd (panel c)",
+            1,
+            0.95,
+        )
+    )
+    for name, title, draw, parent, ncol, height in panels:
+        written += _single(out, widths, name, title, draw, [see.format(parent)], ncol, height)
+    return written
+
+
+def _rq1_k_panel(bundle: Bundle, ax, records: list, K: int, panel: str):
+    points = _rq1_points(bundle, "cifar10", K)
+    _rq1_panel(ax, points, None, False, records, panel)
+    bad = points[points["n_infeasible"] > 0]
+    for i, (_, p) in enumerate(bad.iterrows()):
+        ax.text(
+            0.02,
+            0.95 - 0.08 * i,
+            f"× {p['arm']}, α = {p['alpha']:g}: {p['n_infeasible']}/{p['n_total']} infeasible",
+            transform=ax.transAxes,
+            va="top",
+            fontsize=FONT_SIZE - 1,
+        )
+
+
+def single_residual_figures(bundle: Bundle, fits: dict, out: Path, widths: Widths):
+    written = []
+    for algorithm in ALGORITHMS:
+        data, fit = fits[algorithm]
+
+        def draw(ax, records, data=data, fit=fit, algorithm=algorithm):
+            for q in sorted(data["Q_level"].unique()):
+                sel = (data["Q_level"] == q).to_numpy()
+                color, marker = LEVEL_STYLE.get(round(q, 2), ("#000000", "o"))
+                ax.plot(
+                    fit.fitted[sel],
+                    fit.residuals[sel],
+                    marker,
+                    color=color,
+                    ms=3,
+                    mfc="none",
+                    mew=0.7,
+                    label=f"quantity level {q:.2f}" if q else "quantity level 0",
+                )
+            ax.axhline(0, color="black", lw=0.5)
+            ax.set_xlabel("fitted accuracy")
+            ax.set_ylabel("residual")
+            records += [
+                {"algorithm": algorithm, "quantity_level": q, "fitted": f, "residual": e, "n": 1}
+                for q, f, e in zip(data["Q_level"], fit.fitted, fit.residuals)
+            ]
+
+        written += _single(
+            out,
+            widths,
+            f"rq3_regression_residuals_{algorithm}",
+            f"RQ3 regression residuals, {ALGORITHM_NAMES[algorithm]}",
+            draw,
+            ["One panel of rq3_regression_residuals; see that figure's notes."],
+            3,
+            0.85,
+        )
+    return written

@@ -104,7 +104,7 @@ RQ2_GRID = {"cifar10": "rq2", "covtype": "covtype_rq2"}
 CENTRALIZED_GRID = {"cifar10": "centralized", "covtype": "covtype_centralized"}
 CALIBRATION_DIR = Path("calibration")
 CIFAR_QUANTITY_CURVE = "8f995f9546"  # quantity_only, CIFAR-10, K = 30, 20 trials
-COVTYPE_QUANTITY_CURVE = None  # none committed yet: generated with the Covtype RQ1 grids
+COVTYPE_QUANTITY_CURVE = "b4684ba0de"  # quantity_only, Covtype, K = 30, 20 trials
 
 
 def trial_set_label(trials) -> str:
@@ -1315,8 +1315,9 @@ def rq1_max_table(bundle: Bundle, m: pd.DataFrame) -> Table:
         "CIFAR-10 3 trials, Covtype 20.",
         "quantity-only β: the β of deliberate quantity skew (quantity-only partitions) whose mean "
         "quantity-HD equals that value, by `partitioning.calibration.beta_for_target` (log-linear "
-        f"interpolation, no refinement) on the 20-trial curve calibration/{CIFAR_QUANTITY_CURVE}.json "
-        "for CIFAR-10.",
+        "interpolation, no refinement) on the 20-trial curves "
+        f"calibration/{CIFAR_QUANTITY_CURVE}.json (CIFAR-10) and "
+        f"calibration/{COVTYPE_QUANTITY_CURVE}.json (Covtype).",
     ]
     if COVTYPE_QUANTITY_CURVE is None:
         notes.append("Covtype β: pending; no Covtype quantity-only curve exists yet.")

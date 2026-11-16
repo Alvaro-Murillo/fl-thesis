@@ -20,6 +20,7 @@ Reads the recorded runs and partitions (read-only; see `analysis.paper_data`) an
     {out}/paper/reproduction_check.txt      the CIFAR-10 three-trial values checked against
                                             the recorded analysis of trials 0-2
     {out}/paper/trials_0_1_2/               the same outputs on CIFAR-10 trials {0,1,2}
+    {out}/index.md                          every file above, with the command and commit
 
 Covtype FedProx (covtype_rq2.yaml) is off by default: until it has finished training its cells
 read "pending", its figure lines are absent with a note, and its numbers are \\textbf{??}.
@@ -430,6 +431,8 @@ def generate(sources: Sources, out: Path, widths, session, numbers_dir: Path) ->
     written += figs.rq3_heatmap(b, summary, add, "fedprox", "final_acc", figures_dir, widths)
     written += figs.rq3_heatmap(b, summary, rta_add, "fedavg", "rta", figures_dir, widths)
     written += figs.regression_residuals(b, fits, figures_dir, widths)
+    written += figs.single_panel_figures(b, summary, diffs, figures_dir / "single", widths)
+    written += figs.single_residual_figures(b, fits, figures_dir / "single", widths)
 
     numbers = build_numbers(
         b, summary, gaps, add, wins, mu_selected, rq1s, rq1max, matched, diffs[0.45], tol, cov_facts
@@ -638,7 +641,60 @@ def main(argv=None) -> int:
     lines.append(f"\n{provenance}")
     atomic_write_text(paper / "reproduction_check.txt", "\n".join(lines) + "\n")
     print("\n".join(lines))
+    write_index(args, main_set, provenance, argv)
     return status
+
+
+INDEX_KINDS = (
+    ("numbers", "Numbers quoted in the text"),
+    ("tables", "Tables"),
+    ("figures", "Figures"),
+    ("checks", "Checks, comparison and inputs"),
+    ("trials", "The same outputs on another CIFAR-10 trial set"),
+)
+
+
+def _index_kind(rel: Path) -> str:
+    if rel.parts[0] != "paper":
+        return "numbers"
+    if len(rel.parts) > 2 and rel.parts[1].startswith("trials_"):
+        return "trials"
+    return {"tables": "tables", "figures": "figures"}.get(rel.parts[1], "checks")
+
+
+def write_index(args, sources: Sources, provenance: dict, argv) -> Path:
+    """{out}/index.md: every output file, with the command and commit that produced it."""
+    out = args.out_dir
+    files = sorted(
+        p.relative_to(out)
+        for p in [out / "numbers.tex", out / "numbers.csv", *(out / "paper").rglob("*")]
+        if p.is_file()
+    )
+    command = "python -m analysis.paper_outputs " + " ".join(argv if argv else sys.argv[1:])
+    lines = [
+        "# Results-section outputs",
+        "",
+        f"Produced by `{command.strip()}` (script `analysis/paper_outputs.py`) at commit "
+        f"{provenance['git_commit']}, git_dirty {provenance['git_dirty']}, "
+        f"{provenance['generated_at']} UTC. Every file below was written by that run.",
+        "",
+        f"- CIFAR-10 trials {res.trial_set_label(sources.cifar_trials)}; Covtype trials "
+        f"{res.trial_set_label(sources.covtype_trials)}; Covtype FedProx "
+        f"{'included' if sources.covtype_fedprox else 'not included (pending)'}",
+        "- The runs and partitions read, with the commit each was recorded at: "
+        "`paper/inputs_manifest.csv`",
+        "",
+    ]
+    for kind, title in INDEX_KINDS:
+        chosen = [f for f in files if _index_kind(f) == kind]
+        if not chosen:
+            continue
+        lines += [f"## {title}", ""]
+        lines += [f"- `{f.as_posix()}`" for f in chosen]
+        lines.append("")
+    path = out / "index.md"
+    atomic_write_text(path, "\n".join(lines))
+    return path
 
 
 if __name__ == "__main__":

@@ -303,6 +303,7 @@ def test_paper_outputs_on_the_recorded_results_pass_the_reproduction_check(tmp_p
     assert status == 0
     text = (tmp_path / "paper" / "reproduction_check.txt").read_text(encoding="utf-8")
     assert "FAIL" not in text
+    assert (tmp_path / "index.md").exists()
     for path in (tmp_path / "paper").rglob("*"):
         if path.suffix in (".csv", ".tex", ".md", ".txt"):
             assert "niid" not in path.read_text(encoding="utf-8")
