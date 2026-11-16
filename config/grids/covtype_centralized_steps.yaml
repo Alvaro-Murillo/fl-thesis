@@ -13,15 +13,13 @@
 #   python -m experiments.run_training --grid config/grids/covtype_centralized_steps.yaml --shard 0/3
 #   (and --shard 1/3, --shard 2/3)
 #
-# 5 runs, no partitions; about 80 min each alone. Trained last, after the FedProx
-# runs, and the first to cut if time is short.
+# 5 runs, no partitions; about 80 min each alone. Trained last: it was blocked until
+# the Covtype FedProx runs were trained, which they were by 2026-11-15, and it is open
+# for training since 2026-11-16.
 
 label: >-
   post-hoc sensitivity check, added 2026-11-08 after seeing the 10-epoch centralized
   result; not the pre-specified baseline
-
-status: blocked
-blocked_on: trained last, after the Covtype FedProx runs
 
 base: config/covtype_centralized.yaml
 

@@ -89,8 +89,7 @@ interpreter (`.venv\Scripts\python.exe` on the desktop machine).
   centralized.yaml, Covtype's covtype.yaml and covtype_centralized.yaml, and grids/
   (rq1.yaml, rq2.yaml, rq3.yaml, the partition-only rq3_edge.yaml, quantity_skew.yaml,
   mu_tuning.yaml, rq2_class_order.yaml, centralized.yaml, covtype_rq2.yaml,
-  covtype_centralized.yaml, covtype_mu_tuning.yaml, and the blocked
-  covtype_centralized_steps.yaml)
+  covtype_centralized.yaml, covtype_mu_tuning.yaml and covtype_centralized_steps.yaml)
 - calibration/ - committed calibration curves, `{calibration_id}.json`
 - tests/ - verification suite
 - analysis/ - result analysis and figure-generation scripts
@@ -422,7 +421,8 @@ at level 0. The Covtype grids, trained three shards at once:
   the CIFAR-10 trial extension were trained) - pure_label at label-HD 0.35, trials
   5-6, FedAvg and FedProx at the six mu values, with mu_tuning.yaml's rule: 14 runs.
   Trained; the rule picked mu = 0.001.
-- `covtype_centralized_steps.yaml` (blocked, trained last) - the centralized
+- `covtype_centralized_steps.yaml` (open since 2026-11-16, once the Covtype FedProx
+  runs were trained; trained last) - the centralized
   baseline for 400 epochs, the optimizer steps of one 40 x 10 federated run, trials
   0-4. A post-hoc sensitivity check added after seeing the 10-epoch result; its
   `label` is written into every one of its runs.jsonl rows.
@@ -905,3 +905,13 @@ two-stage nested partitioning method (`partitioning/two_stage_method.py`).
 - `covtype_rq2.yaml` gains its 60 FedProx cases at mu = 0.001, one next to each FedAvg
   case; the FedAvg digest b3918f6082faab77 and the 60 partitions are unchanged. Open
   for training: 20 FedProx runs per shard, about 40 h three at once
+- Covtype trained, three at once on a clean tree: the 60 FedAvg cases of
+  `covtype_rq2.yaml` and the 5 runs of `covtype_centralized.yaml` at 694af23
+  (2026-11-09 to 11-11), the 60 FedProx cases at 96b6547 (2026-11-13 to 11-15).
+  All 125 completed. Six FedProx runs and five FedAvg runs were stopped part-way (a
+  Windows Update restart, runs stopped by hand, and three that ended in their first
+  round with no error text) and trained again from round 0; only the completed run's
+  files are kept. Measured, three at once: 100.8 min per FedAvg run, 132.8 min per
+  FedProx run (1.32 times FedAvg; the CIFAR-10 ratio was 1.18)
+- `covtype_centralized_steps.yaml` open for training (2026-11-16): the Covtype
+  FedProx runs it waited for are trained. No config_hash moves

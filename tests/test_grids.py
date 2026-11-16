@@ -465,7 +465,7 @@ COVTYPE_CURVES = {
         ("covtype_rq2", 120, 60, True),
         ("covtype_centralized", 5, 0, True),
         ("covtype_mu_tuning", 14, 2, True),
-        ("covtype_centralized_steps", 5, 0, False),
+        ("covtype_centralized_steps", 5, 0, True),
     ],
 )
 def test_the_covtype_grids_train_the_dnn_on_covtype(name, runs, partitions, open_for_training):
