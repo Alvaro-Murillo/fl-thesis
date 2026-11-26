@@ -7,11 +7,11 @@ Real CIFAR-10 labels, K = 30, two variants per (beta, seed):
     fedartml  FedArtML 0.1.34 SplitAsFederatedData.dirichlet_method_quant_skew,
               method="minsize-dirichlet", random_state=seed, inside
               `preserved_global_rng()` - it reseeds the global np.random
-    local     partitioning.quantity.quantity_only, np.random.default_rng(seed),
+    local     partitioning.quantity_only_method.quantity_only, np.random.default_rng(seed),
               floor default_quantity_floor(10) = 31 (FedArtML derives the same
               3 * 10 + 1 from the labels)
 
-The two run the same algorithm on different RNG streams (tests/test_quantity.py
+The two run the same algorithm on different RNG streams (tests/test_quantity_only_method.py
 shows they coincide exactly on a shared stream), so they should agree in
 distribution, not byte-for-byte. The summary gives, per beta and metric,
 z = (mean_fedartml - mean_local) / SE with SE = sqrt(sd_f^2/n + sd_l^2/n).
@@ -38,7 +38,7 @@ from experiments.config import DatasetConfig
 from experiments.datasets import load_labels
 from experiments.recording import atomic_write_text, git_provenance, utc_stamp
 from partitioning.metrics import max_quantity_hd, partition_metrics
-from partitioning.quantity import default_quantity_floor, min_size_bound, quantity_only
+from partitioning.quantity_only_method import default_quantity_floor, min_size_bound, quantity_only
 
 K = 30
 BETAS = (1000.0, 10.0, 1.0, 0.3, 0.1, 0.03)
@@ -82,7 +82,7 @@ def _replayed_shares(N: int, K: int, beta: float, seed: int) -> np.ndarray:
     return p / p.sum()
 
 
-def run(labels, betas=BETAS, seeds=None, K: int = K) -> pd.DataFrame:
+def run_comparison(labels, betas=BETAS, seeds=None, K: int = K) -> pd.DataFrame:
     seeds = comparison_seeds(N_SEEDS) if seeds is None else seeds
     num_classes = len(np.unique(labels))
     floor = default_quantity_floor(num_classes)
@@ -153,7 +153,7 @@ def main() -> None:
     args = parser.parse_args()
 
     labels = load_labels(DatasetConfig(name="cifar10", num_classes=10))
-    df = run(labels, args.betas, comparison_seeds(args.seeds))
+    df = run_comparison(labels, args.betas, comparison_seeds(args.seeds))
     provenance = git_provenance()
     df["git_commit"], df["git_dirty"], df["generated_at"] = (
         provenance["git_commit"],

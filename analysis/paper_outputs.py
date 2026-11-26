@@ -71,7 +71,7 @@ ARM_WORDS = {
 PLACEHOLDER = r"\textbf{??}"
 
 
-def lw(level: float) -> str:
+def level_word(level: float) -> str:
     return LEVEL_WORDS[round(float(level), 2)]
 
 
@@ -121,7 +121,9 @@ def build_numbers(
     N.add("nTrialsCovtype", len(b.trials("covtype")), source="trial set")
     for d in ("cifar10", "covtype"):
         N.add(f"mu{DATASET_WORDS[d]}", mu_selected[d], 3, "mu_sweep")
-        c = res._cell(summary, dataset=d, grid=res.CENTRALIZED_GRID[d], algorithm="centralized")
+        c = res._summary_row(
+            summary, dataset=d, grid=res.CENTRALIZED_GRID[d], algorithm="centralized"
+        )
         N.pm(
             f"central{DATASET_WORDS[d]}Acc",
             c["final_acc_mean"],
@@ -136,22 +138,22 @@ def build_numbers(
         grid = res.RQ2_GRID[d]
         for L in res.rq2_levels(b, d):
             for arm in res.rq2_arms(d, L):
-                hd = res.part_means(b, d, grid, arm, L)
+                hd = res.partition_hd_means(b, d, grid, arm, L)
                 A = ARM_WORDS[arm]
-                N.add(f"rqTwo{D}Label{A}{lw(L)}", hd["label_hd"], 3, "main_results_body")
-                N.add(f"rqTwo{D}Qty{A}{lw(L)}", hd["qty_hd"], 3, "main_results_body")
-                N.add(f"rqTwo{D}SwLabel{A}{lw(L)}", hd["sw_hd"], 3, "main_results_full")
+                N.add(f"rqTwo{D}Label{A}{level_word(L)}", hd["label_hd"], 3, "main_results_body")
+                N.add(f"rqTwo{D}Qty{A}{level_word(L)}", hd["qty_hd"], 3, "main_results_body")
+                N.add(f"rqTwo{D}SwLabel{A}{level_word(L)}", hd["sw_hd"], 3, "main_results_full")
                 for alg in res.ALGORITHMS:
                     status = "pending" if b.is_pending(d, alg) else "final"
                     c = (
                         None
                         if status == "pending"
-                        else res._cell(
+                        else res._summary_row(
                             summary, dataset=d, grid=grid, cell_arm=arm, L=L, Q=None, algorithm=alg
                         )
                     )
                     N.pm(
-                        f"rqTwo{D}Acc{A}{lw(L)}{ALGORITHM_WORDS[alg]}",
+                        f"rqTwo{D}Acc{A}{level_word(L)}{ALGORITHM_WORDS[alg]}",
                         None if c is None else c["final_acc_mean"],
                         None if c is None else c["final_acc_sd"],
                         4,
@@ -161,7 +163,7 @@ def build_numbers(
     # RQ2 gaps
     for _, g in gaps.iterrows():
         D, A, B = DATASET_WORDS[g["dataset"]], ARM_WORDS[g["arm_a"]], ARM_WORDS[g["arm_b"]]
-        name = f"rqTwo{D}Gap{A}{B}{lw(g['level'])}{ALGORITHM_WORDS[g['algorithm']]}"
+        name = f"rqTwo{D}Gap{A}{B}{level_word(g['level'])}{ALGORITHM_WORDS[g['algorithm']]}"
         status = "pending" if g["pending"] else "final"
         N.pm(name, g.get("gap_mean"), g.get("gap_sd"), 4, "rq2_paired_gaps", status)
         N.add(name + "Pos", g.get("n_positive"), None, "rq2_paired_gaps", status)
@@ -185,7 +187,7 @@ def build_numbers(
         corner = [v for (L, Q, _), v in acc.items() if L == Ls[0] and Q == Qs[0]]
         N.pm(f"rqThreeCorner{Alg}", *mean_sd(corner)[:2], 4, "rq3_accuracy_heatmap")
         for _, r in a.iterrows():
-            name = f"rqThreeInt{lw(r['level'])}{lw(r['quantity_level'])}{Alg}"
+            name = f"rqThreeInt{level_word(r['level'])}{level_word(r['quantity_level'])}{Alg}"
             N.pm(name, r["interaction_mean"], r["interaction_sd"], 3, "rq3_additivity")
             N.add(name + "Neg", r["n_negative"], None, "rq3_additivity")
         N.add(f"rqThreeNegTotal{Alg}", int(a["n_negative"].sum()), None, "rq3_additivity")
@@ -223,7 +225,7 @@ def build_numbers(
             st = b.rq1_status.get(d, "final")
             value = m[d]
             N.add(
-                f"rqOneMatched{lw(m['label_hd'])}{DATASET_WORDS[d]}{ARM_WORDS[m['arm']]}",
+                f"rqOneMatched{level_word(m['label_hd'])}{DATASET_WORDS[d]}{ARM_WORDS[m['arm']]}",
                 value,
                 3,
                 "rq1_matched_label_hd",
@@ -279,7 +281,7 @@ def reproduction_check(
 
     for L, arms in EXPECTED_RQ2.items():
         for arm, expected in arms.items():
-            c = res._cell(
+            c = res._summary_row(
                 summary3,
                 dataset="cifar10",
                 grid="rq2",
@@ -293,21 +295,21 @@ def reproduction_check(
         check(
             f"RQ2 realized label-HD at 0.45, {arm}",
             expected,
-            res.part_means(b3, "cifar10", "rq2", arm, 0.45)["label_hd"],
+            res.partition_hd_means(b3, "cifar10", "rq2", arm, 0.45)["label_hd"],
             3,
         )
     for arm, expected in (("natural uncapped", 0.361), ("natural capped", 0.250)):
         check(
             f"RQ2 realized quantity-HD at 0.70, {arm}",
             expected,
-            res.part_means(b3, "cifar10", "rq2", arm, 0.7)["qty_hd"],
+            res.partition_hd_means(b3, "cifar10", "rq2", arm, 0.7)["qty_hd"],
             3,
         )
     for L in res.rq2_levels(b3, "cifar10"):
         check(
             f"RQ2 realized quantity-HD, pure, level {L:.2f}",
             0.0,
-            res.part_means(b3, "cifar10", "rq2", "pure", L)["qty_hd"],
+            res.partition_hd_means(b3, "cifar10", "rq2", "pure", L)["qty_hd"],
             3,
         )
     acc = res.rq3_acc(b3, "fedavg")
@@ -357,7 +359,7 @@ def reproduction_check(
         ),
         0,
     )
-    c = res._cell(summary3, dataset="cifar10", grid="centralized", algorithm="centralized")
+    c = res._summary_row(summary3, dataset="cifar10", grid="centralized", algorithm="centralized")
     check("Centralized CIFAR-10 mean", 0.7059, c["final_acc_mean"], 4)
     check("Centralized CIFAR-10 sd", 0.0044, c["final_acc_sd"], 4)
     check(
@@ -385,7 +387,7 @@ def generate(sources: Sources, out: Path, widths, session, numbers_dir: Path) ->
     rq1s = res.rq1_summary(b)
     rq1max = res.rq1_max_incidental(b, rq1s)
     matched = res.rq1_matched(b, rq1s)
-    tol = res.tolerance(b)
+    tol = res.tolerance_misses(b)
     cov_facts = res.covtype_partition_facts(b)
     diffs = {L: res.per_class_differences(b, L) for L in (0.25, 0.45, 0.7)}
 

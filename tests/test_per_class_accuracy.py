@@ -24,7 +24,7 @@ from experiments.per_class_accuracy import (
     per_class_result,
     recorded_per_class,
     rerun,
-    select,
+    filter_configs,
     sweep,
 )
 from experiments.recording import append_jsonl, read_jsonl, runs_path
@@ -335,7 +335,7 @@ def test_import_refuses_a_folder_with_one_file_that_does_not_reproduce(tmp_path,
 
 def test_select_filters_a_grid_by_dotted_keys():
     configs = expand("config/grids/rq2.yaml", for_training=False)
-    chosen = select(
+    chosen = filter_configs(
         configs,
         [
             "federated.algorithm=fedavg",
@@ -347,6 +347,6 @@ def test_select_filters_a_grid_by_dotted_keys():
     assert {c.partition.size_cap for c in chosen} == {"niid_bench", "none"}
     assert {c.runtime.trial for c in chosen} == {0, 1, 2, 5, 6}
     with pytest.raises(ValueError, match="no config matches"):
-        select(configs, ["federated.algorithm=sgd"])
+        filter_configs(configs, ["federated.algorithm=sgd"])
     with pytest.raises(ValueError, match="section.field=value"):
-        select(configs, ["algorithm=fedavg"])
+        filter_configs(configs, ["algorithm=fedavg"])

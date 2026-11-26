@@ -37,7 +37,7 @@ from experiments.run_partition import (
     resolved_quantity_floor,
 )
 from experiments.seeding import generator, seeds_for
-from partitioning.dirichlet import MinSizeInfeasible
+from partitioning.natural_methods import MinSizeInfeasible
 from partitioning.metrics import partition_metrics
 
 LEVEL_SEEDS = 20

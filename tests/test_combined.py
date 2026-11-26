@@ -8,8 +8,8 @@ import pytest
 from experiments.config import from_dict, load_config, to_dict
 from experiments.recording import load_partition, partition_id, read_jsonl
 from experiments.seeding import seeds_for
-from partitioning.allocations import allocate_to_budgets, label_drift, sinkhorn_scale
-from partitioning.quantity import draw_client_sizes
+from partitioning.pure_label_method import allocate_to_budgets, label_drift, sinkhorn_scale
+from partitioning.quantity_only_method import draw_client_sizes
 from partitioning.two_stage_method import allocate_client_weighted, combined, fit_client_mixes
 
 LABELS = np.repeat(np.arange(10), 600)  # balanced, N = 6000

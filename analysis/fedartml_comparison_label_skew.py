@@ -12,7 +12,7 @@ Real CIFAR-10 labels, K = 30, three variants per (alpha, seed):
     local_uncapped    natural_per_class, size_cap="none",       min_size=10
 
 fedartml and local_niid_bench run the same algorithm on different RNG streams
-(tests/test_dirichlet.py shows they coincide exactly on a shared stream), so
+(tests/test_natural_methods.py shows they coincide exactly on a shared stream), so
 they should agree in distribution, not byte-for-byte.
 
 No training. Per-seed rows go to results/analysis/fedartml_comparison_label_skew.csv.
@@ -34,7 +34,7 @@ from experiments.config import DatasetConfig
 from experiments.datasets import load_labels
 from experiments.recording import atomic_write_text, git_provenance, utc_stamp
 from experiments.seeding import derive_seeds
-from partitioning.dirichlet import natural_per_class
+from partitioning.natural_methods import natural_per_class
 from partitioning.metrics import partition_metrics
 
 K = 30
@@ -90,7 +90,9 @@ def partition(variant: str, labels, K: int, alpha: float, seed: int):
     )
 
 
-def run(labels, alphas=ALPHAS, seeds=None, K: int = K, variants=VARIANTS) -> pd.DataFrame:
+def run_comparison(
+    labels, alphas=ALPHAS, seeds=None, K: int = K, variants=VARIANTS
+) -> pd.DataFrame:
     seeds = comparison_seeds(N_SEEDS) if seeds is None else seeds
     num_classes = len(np.unique(labels))
     rows = []
@@ -151,7 +153,7 @@ def main() -> None:
     args = parser.parse_args()
 
     labels = load_labels(DatasetConfig(name="cifar10", num_classes=10))
-    df = run(labels, args.alphas, comparison_seeds(args.seeds))
+    df = run_comparison(labels, args.alphas, comparison_seeds(args.seeds))
     provenance = git_provenance()
     df["git_commit"], df["git_dirty"], df["generated_at"] = (
         provenance["git_commit"],

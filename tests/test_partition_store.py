@@ -16,7 +16,7 @@ from experiments.recording import (
     save_partition,
 )
 from experiments.seeding import generator, seeds_for
-from partitioning.dirichlet import natural_per_class
+from partitioning.natural_methods import natural_per_class
 
 LABELS = np.tile(np.arange(10), 500)
 

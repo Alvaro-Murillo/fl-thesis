@@ -307,7 +307,7 @@ def per_class_results(configs: dict) -> dict:
 
 
 # ---------------------------------------------------------------- tables
-def md(df: pd.DataFrame, floatfmt: str = ".4f", index: bool = True) -> str:
+def markdown_table(df: pd.DataFrame, floatfmt: str = ".4f", index: bool = True) -> str:
     df = df.reset_index() if index else df
 
     def cell(v):
@@ -342,12 +342,12 @@ def concentration_tables(level: float, counts: dict) -> tuple[list[str], dict]:
     table["effective reversed - uncapped"] = effective["capped reversed"] - effective["uncapped"]
     check = concentration_present(holders)
     out = [f"\n### Concentration across clients at label-HD {level:.2f}, means over trials 0-2\n"]
-    out.append(md(table, ".2f"))
+    out.append(markdown_table(table, ".2f"))
     out.append("\nEffective holders are descriptive only; the expectation is on holders.\n")
     rows = [(name, "holds" if ok else "does not hold") for name, ok in check.items()]
     rows[-1] = ("concentration present (all four)", "yes" if check["present"] else "no")
     out.append("\nExpectation on holders (fixed before the check):\n")
-    out.append(md(pd.DataFrame(rows, columns=["check", "result"]), index=False))
+    out.append(markdown_table(pd.DataFrame(rows, columns=["check", "result"]), index=False))
     return out, {"holders": holders, "effective": effective, **check}
 
 
@@ -412,7 +412,7 @@ def descriptive_tables(level: float, results: dict) -> tuple[list[str], dict]:
         )
     table.loc["mean (= overall)"] = table.mean()
     out.append("Per-class paired difference against uncapped, final accuracy\n")
-    out.append(md(table))
+    out.append(markdown_table(table))
 
     overall = pd.DataFrame(
         {arm: [results[(level, arm, t)]["accs"][-1] for t in trials] for arm in have},
@@ -422,7 +422,7 @@ def descriptive_tables(level: float, results: dict) -> tuple[list[str], dict]:
     overall["reversed - uncapped"] = overall["capped reversed"] - overall["uncapped"]
     overall["reversed - index"] = overall["capped reversed"] - overall["capped index"]
     out.append("\nOverall final accuracy, trials 5 and 6\n")
-    out.append(md(overall))
+    out.append(markdown_table(overall))
     summary = {
         f"descriptive_overall_{label}_minus_uncapped_t{t}": overall.loc[
             f"trial {t}", f"{label} - uncapped"
@@ -459,7 +459,7 @@ def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], 
     for column in ("index lower (of 3)", "reversed lower (of 3)"):
         shown[column] = mean[column].map(lambda v: "" if np.isnan(v) else f"{v:.0f}")
     out.append("### Per-class final accuracy, means over trials 0-2\n")
-    out.append(md(shown))
+    out.append(markdown_table(shown))
 
     for arm, label in (("capped index", "index"), ("capped reversed", "reversed")):
         diff = pd.DataFrame(
@@ -469,13 +469,13 @@ def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], 
         diff["mean"] = diff.mean(axis=1)
         diff["lower (of 3)"] = (diff[[f"trial {t}" for t in TRIALS]] < 0).sum(axis=1).astype(int)
         out.append(f"\n### Paired per-trial difference, {label} - uncapped\n")
-        out.append(md(diff))
+        out.append(markdown_table(diff))
 
     arms = [arm for arm in ARMS if arm in acc]
     overall = overall_by_trial(level, results, arms)
     weak = low_power(overall.loc[[f"trial {t}" for t in TRIALS], "index - uncapped"])
     out.append("\n### Overall final accuracy by trial\n")
-    out.append(md(overall))
+    out.append(markdown_table(overall))
 
     g = gate(acc["capped index"], acc["uncapped"])
     v = verdict(acc["capped reversed"], acc["uncapped"])
@@ -518,7 +518,7 @@ def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], 
         ),
     ]
     out.append("\n### Pre-registered gate and verdict\n")
-    out.append(md(pd.DataFrame(rows, columns=["quantity", "value"]), index=False))
+    out.append(markdown_table(pd.DataFrame(rows, columns=["quantity", "value"]), index=False))
     descriptive_text, descriptive = descriptive_tables(level, results)
     out += descriptive_text
 
@@ -533,7 +533,7 @@ def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], 
         rhos.append((label, spearmanr(d, z).statistic if np.ptp(z) > 0 else np.nan))
     table = pd.DataFrame({f"zero-holders {arm}": zero[arm] for arm in needed}, index=NAMES)
     out.append("\n### Zero-holders (clients with no sample of the class), means over trials\n")
-    out.append(md(table, ".2f"))
+    out.append(markdown_table(table, ".2f"))
     out.append(
         "\nSpearman over the 10 classes, accuracy change vs zero-holder change against uncapped "
         "(descriptive only): " + ", ".join(f"{label} rho = {rho:.3f}" for label, rho in rhos) + "\n"
@@ -557,14 +557,14 @@ def level_tables(level: float, results: dict, counts: dict) -> tuple[list[str], 
             out.append(
                 f"\n### True {CLASSES[c]}: predictions, summed over trials ({label} order concentrates it)\n"
             )
-            out.append(md(dest, ".0f"))
+            out.append(markdown_table(dest, ".0f"))
     off = {}
     for arm in needed:
         m = summed[arm].copy()
         np.fill_diagonal(m, 0)
         off[arm] = m.sum(axis=0)
     out.append("\n### Images of another class predicted as each class, summed over trials\n")
-    out.append(md(pd.DataFrame(off, index=[f"false '{n}'" for n in CLASSES]), ".0f"))
+    out.append(markdown_table(pd.DataFrame(off, index=[f"false '{n}'" for n in CLASSES]), ".0f"))
 
     out += conc_text
     summary = {

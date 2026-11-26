@@ -8,7 +8,7 @@ import pytest
 from experiments.config import from_dict, load_config, to_dict
 from experiments.recording import load_partition, partition_id
 from experiments.seeding import seeds_for
-from partitioning.allocations import (
+from partitioning.pure_label_method import (
     allocate_to_budgets,
     equal_budgets,
     label_drift,
@@ -16,7 +16,7 @@ from partitioning.allocations import (
     round_to_margins,
     sinkhorn_scale,
 )
-from partitioning.calibration import evaluate
+from partitioning.calibration import measure_realized_skew
 from partitioning.metrics import partition_metrics
 
 LABELS = np.repeat(np.arange(10), 600)  # balanced, N = 6000
@@ -259,11 +259,11 @@ def test_runner_writes_pure_label_rows(tmp_path):
 
 
 def test_calibration_evaluates_pure_label():
-    point = evaluate(LABELS, 10, "pure_label", 1.0, [0, 1])
+    point = measure_realized_skew(LABELS, 10, "pure_label", 1.0, [0, 1])
     assert point["all_feasible"] and point["mean_quantity_hd"] < 1e-3
     assert all(t["n_redraws"] == 0 for t in point["trials"])
     with pytest.raises(ValueError, match="min_size_policy"):
-        evaluate(LABELS, 10, "pure_label", 1.0, [0], min_size_policy=10)
+        measure_realized_skew(LABELS, 10, "pure_label", 1.0, [0], min_size_policy=10)
 
 
 @pytest.mark.slow

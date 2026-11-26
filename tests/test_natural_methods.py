@@ -12,7 +12,7 @@ import pytest
 from experiments.config import config_hash, from_dict, load_config, to_dict
 from experiments.recording import partition_id
 from experiments.seeding import seeds_for
-from partitioning.dirichlet import natural_per_class
+from partitioning.natural_methods import natural_per_class
 
 LABELS = np.repeat(np.arange(10), 600)  # N = 6000, balanced
 
@@ -98,14 +98,14 @@ def test_size_cap_validated_in_config():
 
 @pytest.mark.parametrize("mode", ["natural_per_class", "natural_per_client"])
 def test_redraw_count_is_reported_and_exhaustion_is_typed(mode):
-    from partitioning import dirichlet
+    from partitioning import natural_methods
 
-    partitioner = getattr(dirichlet, mode)
+    partitioner = getattr(natural_methods, mode)
     stats = {}
     partitioner(LABELS, 30, 5.0, np.random.default_rng(0), min_size=10, stats=stats)
     assert stats["n_redraws"] == 0
     stats = {}
-    with pytest.raises(dirichlet.MinSizeInfeasible) as err:
+    with pytest.raises(natural_methods.MinSizeInfeasible) as err:
         partitioner(
             LABELS,
             30,

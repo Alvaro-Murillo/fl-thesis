@@ -40,8 +40,8 @@ from analysis.paper_results import (
     RQ2_ARMS,
     RQ2_GRID,
     Bundle,
-    _cell,
-    part_means,
+    _summary_row,
+    partition_hd_means,
     rq2_arms,
     rq2_levels,
     rq3_levels,
@@ -371,7 +371,7 @@ def _rq2_series(bundle: Bundle, summary, dataset: str, metric: str):
             pts = []
             for L in rq2_levels(bundle, dataset):
                 cell_arm = arm if arm in rq2_arms(dataset, L) else NATURAL
-                c = _cell(
+                c = _summary_row(
                     summary,
                     dataset=dataset,
                     grid=grid,
@@ -380,7 +380,7 @@ def _rq2_series(bundle: Bundle, summary, dataset: str, metric: str):
                     Q=None,
                     algorithm=algorithm,
                 )
-                hd = part_means(bundle, dataset, grid, cell_arm, L)
+                hd = partition_hd_means(bundle, dataset, grid, cell_arm, L)
                 pts.append(
                     {
                         "dataset": dataset,
@@ -614,7 +614,7 @@ def rq3_heatmap(
     fig, ax = plt.subplots(figsize=(widths.column, height), layout="constrained")
     for i, L in enumerate(Ls):
         for j, Q in enumerate(Qs):
-            c = _cell(
+            c = _summary_row(
                 summary,
                 dataset="cifar10",
                 grid="rq3",
@@ -625,7 +625,7 @@ def rq3_heatmap(
             )
             m, s, n = c[f"{metric}_mean"], c[f"{metric}_sd"], c[f"{metric}_n"]
             values[i, j] = m
-            hd = part_means(bundle, "cifar10", "rq3", "combined", L, Q)
+            hd = partition_hd_means(bundle, "cifar10", "rq3", "combined", L, Q)
             hit = add[
                 (add["algorithm"] == algorithm) & (add["level"] == L) & (add["quantity_level"] == Q)
             ]

@@ -22,8 +22,8 @@ ALGORITHMS = frozenset({"fedavg", "fedprox", "centralized"})
 ARCHS = frozenset({"cnn", "dnn"})  # mirrors models.networks.ARCHS
 OPTIMIZERS = frozenset({"adam", "sgd"})
 DEVICES = frozenset({"cuda", "cpu"})
-SIZE_CAPS = ("none", "niid_bench")  # mirrors partitioning.dirichlet.SIZE_CAPS
-CLASS_ORDERS = ("index", "reversed")  # mirrors partitioning.dirichlet.CLASS_ORDERS
+SIZE_CAPS = ("none", "niid_bench")  # mirrors partitioning.natural_methods.SIZE_CAPS
+CLASS_ORDERS = ("index", "reversed")  # mirrors partitioning.natural_methods.CLASS_ORDERS
 DEFAULT_MAX_REDRAWS = 1000
 
 
@@ -41,7 +41,7 @@ NO_REDRAW = {
     PartitionMode.PURE_LABEL: "every client holds N // K or N // K + 1 samples",
     PartitionMode.COMBINED: "its client sizes come from the quantity draw and quantity_floor",
 }
-# Modes whose client sizes come from partitioning.quantity.draw_client_sizes.
+# Modes whose client sizes come from partitioning.quantity_only_method.draw_client_sizes.
 FLOORED_MODES = (PartitionMode.QUANTITY_ONLY, PartitionMode.COMBINED)
 
 

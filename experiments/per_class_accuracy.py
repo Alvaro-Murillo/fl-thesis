@@ -311,7 +311,7 @@ def per_class_result(out_dir: str | Path, run_id: str) -> dict:
     return recorded
 
 
-def checked(payload: dict, row: dict, history: list[float]) -> dict:
+def with_bit_exact_checks(payload: dict, row: dict, history: list[float]) -> dict:
     """The payload with each bit-exactness check against its recorded run, and the verdict."""
     accs = payload["accs"]
     checks = {
@@ -383,7 +383,7 @@ def sweep(
             tensors[key],
             lambda r: log(f"  round {r.round:>3}/{rounds}  acc {r.test_acc:.4f}"),
         )
-        payload = checked(
+        payload = with_bit_exact_checks(
             {"run_id": run_id, "source": "rerun", **out, **git_provenance(), **torch_provenance()},
             recorded[run_id],
             recorded_history(out_dir, run_id),
@@ -412,7 +412,7 @@ def import_results(
         if run_id not in recorded:
             raise RuntimeError(f"{path.name}: run {run_id} has no completed row in runs.jsonl")
         keep = ("git_commit", "git_dirty", "torch_version", "cuda_version", "gpu_name")
-        payload = checked(
+        payload = with_bit_exact_checks(
             {
                 "run_id": run_id,
                 "source": f"imported from {path.name}",
@@ -457,7 +457,9 @@ def _field(config: ExperimentConfig, key: str):
     return value.value if isinstance(value, Enum) else value
 
 
-def select(configs: Sequence[ExperimentConfig], where: Sequence[str]) -> list[ExperimentConfig]:
+def filter_configs(
+    configs: Sequence[ExperimentConfig], where: Sequence[str]
+) -> list[ExperimentConfig]:
     """The configs whose dotted-key fields equal every KEY=VALUE given (values read as YAML)."""
     conditions = []
     for item in where:
@@ -487,7 +489,7 @@ def main() -> None:
         if args.folder is not None:
             print(f"{import_results(args.folder, args.out_dir)} files imported")
             return
-        configs = select(expand(args.grid, for_training=False), args.where)
+        configs = filter_configs(expand(args.grid, for_training=False), args.where)
         if args.list:
             recorded = completed_rows(configs[0].runtime.out_dir)
             for i, config in enumerate(configs, 1):

@@ -26,8 +26,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.special import logsumexp
 
-from partitioning.allocations import label_drift, round_to_margins
-from partitioning.quantity import draw_client_sizes
+from partitioning.pure_label_method import label_drift, round_to_margins
+from partitioning.quantity_only_method import draw_client_sizes
 
 _LOG_UNDERFLOW = float(np.log(np.nextafter(0.0, 1.0)))
 

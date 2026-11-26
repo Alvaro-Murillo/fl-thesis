@@ -15,15 +15,15 @@ from partitioning.calibration import (
     calibration_id,
     compute_curve,
     curve_parameter,
-    evaluate,
+    measure_realized_skew,
     load_calibration,
     monotone_decreasing,
     resolve_targets,
     save_calibration,
 )
-from partitioning.dirichlet import natural_per_class
+from partitioning.natural_methods import natural_per_class
 from partitioning.metrics import partition_metrics
-from partitioning.quantity import quantity_only
+from partitioning.quantity_only_method import quantity_only
 
 LABELS = np.repeat(np.arange(10), 300)
 ALPHAS = tuple(np.logspace(-1, 2, 8))
@@ -93,7 +93,7 @@ def test_inverse_interpolates_within_range_and_refuses_outside(curve):
 def test_bisection_refinement_hits_the_target(curve):
     target = sum(curve["label_hd_range"]) / 2
     alpha = alpha_for_target(curve, target, labels=LABELS, tol=0.01)
-    realized = evaluate(
+    realized = measure_realized_skew(
         LABELS, 10, curve["mode"], alpha, curve["seeds"], curve["size_cap"], min_size_policy=5
     )["mean_label_hd"]
     assert realized == pytest.approx(target, abs=0.01)
@@ -211,14 +211,16 @@ def test_beta_inverse_and_parameter_guard(beta_curve):
     beta = beta_for_target(beta_curve, target)
     assert beta_curve["betas"][0] < beta < beta_curve["betas"][-1]
     refined = beta_for_target(beta_curve, target, labels=QUANTITY_LABELS, tol=0.01)
-    realized = evaluate(QUANTITY_LABELS, 10, "quantity_only", refined, beta_curve["seeds"])
+    realized = measure_realized_skew(
+        QUANTITY_LABELS, 10, "quantity_only", refined, beta_curve["seeds"]
+    )
     assert realized["mean_quantity_hd"] == pytest.approx(target, abs=0.01)
     with pytest.raises(ValueError, match="outside"):
         beta_for_target(beta_curve, high + 0.05)
     with pytest.raises(ValueError, match="indexed by beta"):
         alpha_for_target(beta_curve, target)
     with pytest.raises(ValueError, match="min_size_policy"):
-        evaluate(QUANTITY_LABELS, 10, "quantity_only", 1.0, [0], min_size_policy=10)
+        measure_realized_skew(QUANTITY_LABELS, 10, "quantity_only", 1.0, [0], min_size_policy=10)
 
 
 def test_beta_curve_id_depends_on_floor_and_differs_from_alpha_payload(beta_curve):

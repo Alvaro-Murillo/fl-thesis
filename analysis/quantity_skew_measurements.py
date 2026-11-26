@@ -44,7 +44,7 @@ from experiments.seeding import derive_seeds, seeds_for
 from partitioning.calibration import (
     DEFAULT_BETAS,
     beta_for_target,
-    evaluate,
+    measure_realized_skew,
     load_calibration,
 )
 from partitioning.metrics import (
@@ -54,7 +54,7 @@ from partitioning.metrics import (
     partition_metrics,
     quantity_hd_from_pairwise,
 )
-from partitioning.quantity import default_quantity_floor, min_size_bound, quantity_only
+from partitioning.quantity_only_method import default_quantity_floor, min_size_bound, quantity_only
 
 GRID = Path("config/grids/quantity_skew.yaml")
 CURVE_ID = "f09e0cfdf0"
@@ -281,7 +281,7 @@ def resolve_targets(labels, curve: dict, n_seeds: int) -> pd.DataFrame:
         target = quantity_hd_from_pairwise(value, K) if scale == "pairwise" else value
         interpolated = beta_for_target(curve, target)
         refined = beta_for_target(curve, target, labels=labels, tol=0.005)
-        check = evaluate(labels, K, "quantity_only", refined, seeds)
+        check = measure_realized_skew(labels, K, "quantity_only", refined, seeds)
         realized = np.array([t["quantity_hd"] for t in check["trials"]])
         rows.append(
             {

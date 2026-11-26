@@ -257,7 +257,7 @@ def load_rq1(bundle: Bundle, covtype_session: Path | None) -> None:
 
 
 # ---------------------------------------------------------------- cell summaries
-def _summ(group: pd.DataFrame, column: str) -> tuple[float, float, int]:
+def _column_mean_sd(group: pd.DataFrame, column: str) -> tuple[float, float, int]:
     return mean_sd(group[column].tolist())
 
 
@@ -279,7 +279,7 @@ def cell_summary(runs: pd.DataFrame) -> pd.DataFrame:
             "realized_quantity_hd",
             "size_weighted_label_hd",
         ):
-            m, s, n = _summ(g, metric)
+            m, s, n = _column_mean_sd(g, metric)
             row[f"{metric}_mean"], row[f"{metric}_sd"], row[f"{metric}_n"] = m, s, n
         row["best_round_mean"] = g["best_round"].mean()
         row["best_round_min"] = g["best_round"].min()
@@ -288,7 +288,7 @@ def cell_summary(runs: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def _cell(summary: pd.DataFrame, **match) -> pd.Series | None:
+def _summary_row(summary: pd.DataFrame, **match) -> pd.Series | None:
     sel = np.ones(len(summary), dtype=bool)
     for k, v in match.items():
         col = summary[k]
@@ -310,7 +310,7 @@ def rq2_levels(bundle: Bundle, dataset: str) -> list[float]:
     return sorted(bundle.runs.loc[sel, "L"].unique())
 
 
-def by_trial(runs: pd.DataFrame, metric: str = "final_acc", **match) -> dict[int, float]:
+def metric_by_trial(runs: pd.DataFrame, metric: str = "final_acc", **match) -> dict[int, float]:
     sel = ~runs["merged_out"]
     for k, v in match.items():
         sel &= runs[k] == v
@@ -320,7 +320,7 @@ def by_trial(runs: pd.DataFrame, metric: str = "final_acc", **match) -> dict[int
     return dict(zip(hit["trial"], hit[metric]))
 
 
-def part_means(bundle: Bundle, dataset: str, grid: str, arm: str, L, Q=None) -> dict:
+def partition_hd_means(bundle: Bundle, dataset: str, grid: str, arm: str, L, Q=None) -> dict:
     """Mean realized HD values of a cell's partitions (algorithm-independent)."""
     sel = (bundle.runs["grid"] == grid) & (bundle.runs["cell_arm"] == arm) & (bundle.runs["L"] == L)
     sel &= bundle.runs["algorithm"] == "fedavg"
@@ -357,8 +357,8 @@ def setup_table(bundle: Bundle) -> Table:
         levels = sorted({c.partition.target_label_hd for c in configs})
         arms = []
         for c in configs:
-            if _arm(c) not in arms:
-                arms.append(_arm(c))
+            if _config_arm(c) not in arms:
+                arms.append(_config_arm(c))
         cent = grid_configs(central)[0]
         rq3_configs = grid_configs(rq3) if rq3 else []
         q_levels = sorted({c.partition.target_quantity_hd for c in rq3_configs})
@@ -372,8 +372,10 @@ def setup_table(bundle: Bundle) -> Table:
             "Batch size": str(f.batch_size),
             "Optimizer, learning rate": f"{optimizer}, {f.lr:g}",
             "FedProx μ": ", ".join(f"{m:g}" for m in mus),
-            "Label levels": "/".join(_lvl(x) for x in levels),
-            "Quantity levels (RQ3)": "/".join(_lvl(x) for x in q_levels) if q_levels else "--",
+            "Label levels": "/".join(_level_text(x) for x in levels),
+            "Quantity levels (RQ3)": (
+                "/".join(_level_text(x) for x in q_levels) if q_levels else "--"
+            ),
             "Arms, RQ2": ", ".join(arms),
             "Arms, RQ3": "combined" if rq3 else "--",
             "Centralized epochs": str(cent.federated.local_epochs),
@@ -420,13 +422,13 @@ def setup_table(bundle: Bundle) -> Table:
     return Table("setup", df, cols, notes, tabcolsep_pt=4, trial_set=_trial_sets(bundle))
 
 
-def _arm(config) -> str:
+def _config_arm(config) -> str:
     from analysis.paper_data import arm_name
 
     return arm_name(config.partition)
 
 
-def _lvl(x) -> str:
+def _level_text(x) -> str:
     return f"{x:.2f}" if x else "0"
 
 
@@ -435,9 +437,11 @@ def _trial_sets(bundle: Bundle) -> str:
 
 
 # ---------------------------------------------------------------- main results
-def _algo_fields(row: dict, summary, dataset, grid, arm, L, Q, prefix_metrics, bundle, pending):
+def _algorithm_fields(
+    row: dict, summary, dataset, grid, arm, L, Q, prefix_metrics, bundle, pending
+):
     for algorithm in ALGORITHMS:
-        cell = _cell(
+        cell = _summary_row(
             summary, dataset=dataset, grid=grid, cell_arm=arm, L=L, Q=Q, algorithm=algorithm
         )
         for metric, key in prefix_metrics:
@@ -453,7 +457,7 @@ def _algo_fields(row: dict, summary, dataset, grid, arm, L, Q, prefix_metrics, b
 
 
 def _reference_row(summary, dataset, grid, label, metrics, section, post_hoc=False):
-    cell = _cell(summary, dataset=dataset, grid=grid, algorithm="centralized")
+    cell = _summary_row(summary, dataset=dataset, grid=grid, algorithm="centralized")
     row = {"section": section, "row_kind": "reference", "cell": label, "arm_short": label}
     pending = []
     if cell is None:
@@ -475,7 +479,7 @@ def main_results_body(bundle: Bundle, summary: pd.DataFrame) -> Table:
         grid = RQ2_GRID[dataset]
         for L in rq2_levels(bundle, dataset):
             for arm in rq2_arms(dataset, L):
-                hd = part_means(bundle, dataset, grid, arm, L)
+                hd = partition_hd_means(bundle, dataset, grid, arm, L)
                 row = {
                     "section": section,
                     "row_kind": "cell",
@@ -487,7 +491,7 @@ def main_results_body(bundle: Bundle, summary: pd.DataFrame) -> Table:
                     "qty_hd": hd["qty_hd"],
                 }
                 pending = []
-                _algo_fields(
+                _algorithm_fields(
                     row,
                     summary,
                     dataset,
@@ -569,7 +573,7 @@ def main_results_body(bundle: Bundle, summary: pd.DataFrame) -> Table:
     )
 
 
-def _lq_label(L, Q=None) -> str:
+def _levels_label(L, Q=None) -> str:
     return f"{L:.2f}" + ("" if Q is None or pd.isna(Q) else f" × {Q:.2f}")
 
 
@@ -583,7 +587,7 @@ def main_results_full(bundle: Bundle, summary: pd.DataFrame) -> Table:
     rows = []
 
     def cell_row(section, dataset, grid, arm, L, Q, label):
-        hd = part_means(bundle, dataset, grid, arm, L, Q)
+        hd = partition_hd_means(bundle, dataset, grid, arm, L, Q)
         row = {
             "section": section,
             "row_kind": "cell",
@@ -597,7 +601,7 @@ def main_results_full(bundle: Bundle, summary: pd.DataFrame) -> Table:
             "sw_hd": hd["sw_hd"],
         }
         pending = []
-        _algo_fields(row, summary, dataset, grid, arm, L, Q, metrics, bundle, pending)
+        _algorithm_fields(row, summary, dataset, grid, arm, L, Q, metrics, bundle, pending)
         if dataset != "covtype":
             for algorithm in ALGORITHMS:
                 row.pop(f"{algorithm}_bal_mean", None)
@@ -772,8 +776,8 @@ def rq2_gaps(bundle: Bundle, metric: str = "final_acc") -> pd.DataFrame:
         for L in rq2_levels(bundle, dataset):
             for algorithm in ALGORITHMS:
                 for a, b in rq2_pairs(dataset, L):
-                    ha = part_means(bundle, dataset, grid, a, L)
-                    hb = part_means(bundle, dataset, grid, b, L)
+                    ha = partition_hd_means(bundle, dataset, grid, a, L)
+                    hb = partition_hd_means(bundle, dataset, grid, b, L)
                     row = {
                         "section": DATASET_NAMES[dataset],
                         "dataset": dataset,
@@ -794,10 +798,10 @@ def rq2_gaps(bundle: Bundle, metric: str = "final_acc") -> pd.DataFrame:
                     if bundle.is_pending(dataset, algorithm):
                         row["pending"] = "gap;signs;a;b"
                     else:
-                        va = by_trial(
+                        va = metric_by_trial(
                             bundle.runs, metric, grid=grid, cell_arm=a, L=L, algorithm=algorithm
                         )
-                        vb = by_trial(
+                        vb = metric_by_trial(
                             bundle.runs, metric, grid=grid, cell_arm=b, L=L, algorithm=algorithm
                         )
                         p = paired(va, vb)
@@ -898,7 +902,7 @@ def rq3_additivity(bundle: Bundle, metric: str = "final_acc") -> pd.DataFrame:
         for (L, Q), per_trial in inter.items():
             d = deltas(acc, L, Q, Ls[0], Qs[0])
             m, s, n = mean_sd(per_trial.values())
-            hd = part_means(bundle, "cifar10", "rq3", "combined", L, Q)
+            hd = partition_hd_means(bundle, "cifar10", "rq3", "combined", L, Q)
             rows.append(
                 {
                     "section": ALGORITHM_NAMES[algorithm],
@@ -955,7 +959,7 @@ def rq3_rta_table(bundle: Bundle, summary: pd.DataFrame, rta_add: pd.DataFrame) 
     for algorithm in ALGORITHMS:
         for L in Ls:
             for Q in Qs:
-                c = _cell(
+                c = _summary_row(
                     summary,
                     dataset="cifar10",
                     grid="rq3",
@@ -1459,7 +1463,7 @@ def per_class_differences(bundle: Bundle, level: float) -> dict:
 
 
 # ---------------------------------------------------------------- tolerance and partition facts
-def tolerance(bundle: Bundle) -> pd.DataFrame:
+def tolerance_misses(bundle: Bundle) -> pd.DataFrame:
     """Every (cell, trial) partition of the reported grids outside +/- 0.05 of a target."""
     rows = []
     r = bundle.runs[
@@ -1495,7 +1499,7 @@ def covtype_partition_facts(bundle: Bundle) -> pd.DataFrame:
     rows = []
     for L in rq2_levels(bundle, "covtype"):
         for arm in RQ2_ARMS:
-            hd = part_means(bundle, "covtype", "covtype_rq2", arm, L)
+            hd = partition_hd_means(bundle, "covtype", "covtype_rq2", arm, L)
             p = bundle.parts[
                 (bundle.parts["dataset"] == "covtype")
                 & (bundle.parts["arm"] == arm)

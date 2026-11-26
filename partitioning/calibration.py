@@ -57,10 +57,10 @@ import numpy as np
 from experiments.config import FLOORED_MODES, PartitionMode
 from experiments.recording import atomic_write_text, git_provenance, utc_stamp
 from experiments.seeding import derive_seeds
-from partitioning.allocations import pure_label
-from partitioning.dirichlet import MinSizeInfeasible, natural_per_class, natural_per_client
+from partitioning.pure_label_method import pure_label
+from partitioning.natural_methods import MinSizeInfeasible, natural_per_class, natural_per_client
 from partitioning.metrics import partition_metrics
-from partitioning.quantity import default_quantity_floor, quantity_only
+from partitioning.quantity_only_method import default_quantity_floor, quantity_only
 
 CALIBRATION_DIR = Path("calibration")
 DEFAULT_ALPHAS = tuple(float(a) for a in np.logspace(-2, 3, 30))
@@ -153,7 +153,7 @@ def calibration_id(
     return hashlib.sha256(payload.encode()).hexdigest()[:10]
 
 
-def evaluate(
+def measure_realized_skew(
     labels,
     K,
     mode,
@@ -251,7 +251,9 @@ def compute_curve(
     values = sorted(float(v) for v in (betas if parameter == "beta" else alphas))
     seeds = [derive_seeds(t).partition for t in trials]
     curve = [
-        evaluate(labels, K, mode, v, seeds, size_cap, min_size_policy, max_redraws, quantity_floor)
+        measure_realized_skew(
+            labels, K, mode, v, seeds, size_cap, min_size_policy, max_redraws, quantity_floor
+        )
         for v in values
     ]
 
@@ -332,7 +334,7 @@ def _value_for_target(calibration, parameter, target, labels, tol, max_iter) -> 
     lo, hi = log_values[min(i, len(hds) - 1)], log_values[max(i - 1, 0)]  # hd high, low
     log_value = np.log(estimate)
     for _ in range(max_iter):
-        point = evaluate(
+        point = measure_realized_skew(
             labels,
             calibration["K"],
             calibration["mode"],

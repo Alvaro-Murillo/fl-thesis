@@ -12,7 +12,7 @@ from partitioning.metrics import (
     partition_metrics,
     quantity_hd_from_pairwise,
 )
-from partitioning.quantity import (
+from partitioning.quantity_only_method import (
     default_quantity_floor,
     draw_client_sizes,
     min_size_bound,

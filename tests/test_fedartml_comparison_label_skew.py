@@ -11,7 +11,7 @@ largest gap 2.5 SE at alpha = 1000 with 10 seeds, which shrank to 0.05 SE with
 import numpy as np
 import pytest
 
-from analysis.fedartml_comparison_label_skew import ALPHAS, comparison_seeds, run
+from analysis.fedartml_comparison_label_skew import ALPHAS, comparison_seeds, run_comparison
 from experiments.config import DatasetConfig
 from experiments.datasets import load_labels
 
@@ -21,7 +21,9 @@ pytest.importorskip("fedartml")
 @pytest.mark.slow
 def test_fedartml_and_local_capped_agree_on_quantity_hd():
     labels = load_labels(DatasetConfig(name="cifar10", num_classes=10))
-    df = run(labels, ALPHAS, comparison_seeds(10), variants=("fedartml", "local_niid_bench"))
+    df = run_comparison(
+        labels, ALPHAS, comparison_seeds(10), variants=("fedartml", "local_niid_bench")
+    )
     for alpha, group in df.groupby("alpha"):
         fed = group[group.variant == "fedartml"].realized_quantity_hd
         loc = group[group.variant == "local_niid_bench"].realized_quantity_hd

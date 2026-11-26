@@ -8,7 +8,12 @@ streams; P(|t| > 4) ~ 1e-3 per beta and metric at ~18 df.
 import numpy as np
 import pytest
 
-from analysis.fedartml_comparison_quantity_skew import BETAS, comparison_seeds, run, z_scores
+from analysis.fedartml_comparison_quantity_skew import (
+    BETAS,
+    comparison_seeds,
+    run_comparison,
+    z_scores,
+)
 from experiments.config import DatasetConfig
 from experiments.datasets import load_labels
 
@@ -18,7 +23,7 @@ pytest.importorskip("fedartml")
 @pytest.mark.slow
 def test_fedartml_and_quantity_only_agree_on_real_cifar10():
     labels = load_labels(DatasetConfig(name="cifar10", num_classes=10))
-    df = run(labels, BETAS, comparison_seeds(10))
+    df = run_comparison(labels, BETAS, comparison_seeds(10))
     z = z_scores(df, ("realized_quantity_hd", "realized_quantity_hd_pairwise", "realized_label_hd"))
     bad = z[np.abs(z.gap) > 4 * z.se]
     assert bad.empty, bad.to_string()

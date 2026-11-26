@@ -6,7 +6,7 @@ import pytest
 from experiments.config import from_dict, load_config, to_dict
 from experiments.recording import partition_id
 from experiments.seeding import seeds_for
-from partitioning.dirichlet import natural_per_client
+from partitioning.natural_methods import natural_per_client
 from partitioning.metrics import partition_metrics
 
 LABELS = np.repeat(np.arange(10), 600)  # balanced, N = 6000

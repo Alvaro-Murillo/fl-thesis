@@ -53,10 +53,10 @@ from experiments.recording import (
     utc_stamp,
 )
 from experiments.seeding import generator, seeds_for
-from partitioning.allocations import pure_label
-from partitioning.dirichlet import MinSizeInfeasible, natural_per_class, natural_per_client
+from partitioning.pure_label_method import pure_label
+from partitioning.natural_methods import MinSizeInfeasible, natural_per_class, natural_per_client
 from partitioning.metrics import partition_metrics
-from partitioning.quantity import default_quantity_floor, quantity_only
+from partitioning.quantity_only_method import default_quantity_floor, quantity_only
 from partitioning.two_stage_method import combined
 
 FEASIBILITY_TOLERANCE = 0.05
